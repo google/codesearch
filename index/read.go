@@ -69,8 +69,8 @@ import (
 	"encoding/binary"
 	"log"
 	"os"
+	"runtime"
 	"sort"
-	"syscall"
 )
 
 const (
@@ -425,23 +425,6 @@ func mmap(file string) mmapData {
 	return mmapFile(f)
 }
 
-func mmapFile(f *os.File) mmapData {
-	st, err := f.Stat()
-	if err != nil {
-		log.Fatal(err)
-	}
-	size := st.Size()
-	if int64(int(size+4095)) != size+4095 {
-		log.Fatalf("%s: too large for mmap", f.Name())
-	}
-	n := int(size)
-	data, err := syscall.Mmap(f.Fd(), 0, (n+4095)&^4095, syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		log.Fatalf("mmap %s: %v", f.Name(), err)
-	}
-	return mmapData{f, data[:n]}
-}
-
 // File returns the name of the index file to use.
 // It is either $CSEARCHINDEX or $HOME/.csearchindex.
 func File() string {
@@ -449,5 +432,11 @@ func File() string {
 	if f != "" {
 		return f
 	}
-	return os.Getenv("HOME") + "/.csearchindex"
+	var home string
+	if runtime.GOOS == "windows" {
+		home = os.Getenv("HOMEPATH")
+	} else {
+		home = os.Getenv("HOME")
+	}
+	return home + "/.csearchindex"
 }
