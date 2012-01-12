@@ -287,10 +287,14 @@ func (m *matcher) match(b []byte, beginText, endText bool) (end int) {
 	for i, c := range b {
 		d1 := d.next[c]
 		if d1 == nil {
-			if c == '\n' && d.matchNL {
-				return i
+			if c == '\n' {
+				if d.matchNL {
+					return i
+				}
+				d1 = m.startLine
+			} else {
+				d1 = m.computeNext(d, int(c))
 			}
-			d1 = m.computeNext(d, int(c))
 			d.next[c] = d1
 		}
 		d = d1
@@ -312,10 +316,14 @@ func (m *matcher) matchString(b string, beginText, endText bool) (end int) {
 		c := b[i]
 		d1 := d.next[c]
 		if d1 == nil {
-			if c == '\n' && d.matchNL {
-				return i
+			if c == '\n' {
+				if d.matchNL {
+					return i
+				}
+				d1 = m.startLine
+			} else {
+				d1 = m.computeNext(d, int(c))
 			}
-			d1 = m.computeNext(d, int(c))
 			d.next[c] = d1
 		}
 		d = d1

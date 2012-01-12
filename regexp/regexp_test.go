@@ -194,6 +194,7 @@ var grepTests = []struct {
 	g Grep
 }{
 	{re: `a+`, s: "abc\ndef\nghalloo\n", out: "input:abc\ninput:ghalloo\n"},
+	{re: `x.*y`, s: "xay\nxa\ny\n", out: "input:xay\n"},
 }
 
 func TestGrep(t *testing.T) {
