@@ -131,7 +131,7 @@ func main() {
 				log.Printf("%s: %s", path, err)
 				return nil
 			}
-			if info != nil && !info.IsDir() {
+			if info != nil && info.Mode()&os.ModeType == 0 {
 				ix.AddFile(path)
 			}
 			return nil
