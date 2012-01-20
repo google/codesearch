@@ -127,6 +127,15 @@ func main() {
 	for _, arg := range args {
 		log.Printf("index %s", arg)
 		filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
+			if _, elem := filepath.Split(path); elem != "" {
+				// Skip various temporary or "hidden" files or directories.
+				if elem[0] == '.' || elem[0] == '#' || elem[0] == '~' || elem[len(elem)-1] == '~' {
+					if info.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 			if err != nil {
 				log.Printf("%s: %s", path, err)
 				return nil
