@@ -20,6 +20,9 @@ func mmapFile(f *os.File) mmapData {
 	if int64(int(size+4095)) != size+4095 {
 		log.Fatalf("%s: too large for mmap", f.Name())
 	}
+	if size == 0 {
+		return mmapData{f, nil}
+	}
 	h, err := syscall.CreateFileMapping(f.Fd(), nil, syscall.PAGE_READONLY, uint32(size>>32), uint32(size), nil)
 	if err != nil {
 		log.Fatalf("CreateFileMapping %s: %v", f.Name(), err)

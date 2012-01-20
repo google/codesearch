@@ -20,6 +20,9 @@ func mmapFile(f *os.File) mmapData {
 		log.Fatalf("%s: too large for mmap", f.Name())
 	}
 	n := int(size)
+	if n == 0 {
+		return mmapData{f, nil}
+	}
 	data, err := syscall.Mmap(f.Fd(), 0, (n+4095)&^4095, syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		log.Fatalf("mmap %s: %v", f.Name(), err)
