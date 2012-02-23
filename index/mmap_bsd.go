@@ -31,7 +31,7 @@ func mmapFile(f *os.File) mmapData {
 	if n == 0 {
 		return mmapData{f, nil}
 	}
-	data, err := syscall.Mmap(f.Fd(), 0, (n+4095)&^4095, _PROT_READ, _MAP_SHARED)
+	data, err := syscall.Mmap(int(f.Fd()), 0, (n+4095)&^4095, _PROT_READ, _MAP_SHARED)
 	if err != nil {
 		log.Fatalf("mmap %s: %v", f.Name(), err)
 	}
