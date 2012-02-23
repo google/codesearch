@@ -74,38 +74,38 @@ import (
 )
 
 const (
-	magic = "csearch index 1\n"
+	magic        = "csearch index 1\n"
 	trailerMagic = "\ncsearch trailr\n"
 )
 
 // An Index implements read-only access to a trigram index.
 type Index struct {
-	Verbose bool
-	data mmapData
-	pathData uint32
-	nameData uint32
-	postData uint32
+	Verbose   bool
+	data      mmapData
+	pathData  uint32
+	nameData  uint32
+	postData  uint32
 	nameIndex uint32
 	postIndex uint32
-	numName int
-	numPost int
+	numName   int
+	numPost   int
 }
 
-const postEntrySize = 3+4+4
+const postEntrySize = 3 + 4 + 4
 
 func Open(file string) *Index {
 	mm := mmap(file)
-	if len(mm.d) < 4*4 + len(trailerMagic) || string(mm.d[len(mm.d)-len(trailerMagic):]) != trailerMagic {
+	if len(mm.d) < 4*4+len(trailerMagic) || string(mm.d[len(mm.d)-len(trailerMagic):]) != trailerMagic {
 		corrupt()
 	}
 	n := uint32(len(mm.d) - len(trailerMagic) - 5*4)
 	ix := &Index{data: mm}
 	ix.pathData = ix.uint32(n)
-	ix.nameData = ix.uint32(n+4)
-	ix.postData = ix.uint32(n+8)
-	ix.nameIndex = ix.uint32(n+12)
-	ix.postIndex = ix.uint32(n+16)
-	ix.numName = int((ix.postIndex - ix.nameIndex) / 4) - 1
+	ix.nameData = ix.uint32(n + 4)
+	ix.postData = ix.uint32(n + 8)
+	ix.nameIndex = ix.uint32(n + 12)
+	ix.postIndex = ix.uint32(n + 16)
+	ix.numName = int((ix.postIndex-ix.nameIndex)/4) - 1
 	ix.numPost = int((n - ix.postIndex) / postEntrySize)
 	return ix
 }
@@ -120,7 +120,7 @@ func (ix *Index) slice(off uint32, n int) []byte {
 	if n < 0 {
 		return ix.data.d[o:]
 	}
-	return ix.data.d[o:o+n]
+	return ix.data.d[o : o+n]
 }
 
 // uint32 returns the uint32 value at the given offset in the index data.
@@ -147,15 +147,15 @@ func (ix *Index) Paths() []string {
 			break
 		}
 		x = append(x, string(s))
-		off += uint32(len(s)+1)
+		off += uint32(len(s) + 1)
 	}
 	return x
 }
 
 // NameBytes returns the name corresponding to the given fileid.
 func (ix *Index) NameBytes(fileid uint32) []byte {
-	off := ix.uint32(ix.nameIndex+4*fileid)
-	return ix.str(ix.nameData+off)
+	off := ix.uint32(ix.nameIndex + 4*fileid)
+	return ix.str(ix.nameData + off)
 }
 
 func (ix *Index) str(off uint32) []byte {
@@ -184,7 +184,7 @@ func (ix *Index) listAt(off uint32) (trigram, count, offset uint32) {
 func (ix *Index) dumpPosting() {
 	d := ix.slice(ix.postIndex, postEntrySize*ix.numPost)
 	for i := 0; i < ix.numPost; i++ {
-		j := i*postEntrySize
+		j := i * postEntrySize
 		t := uint32(d[j])<<16 | uint32(d[j+1])<<8 | uint32(d[j+2])
 		count := int(binary.BigEndian.Uint32(d[j+3:]))
 		offset := binary.BigEndian.Uint32(d[j+3+4:])
@@ -214,11 +214,11 @@ func (ix *Index) findList(trigram uint32) (count int, offset uint32) {
 }
 
 type postReader struct {
-	ix *Index
-	count int
-	offset uint32
-	fileid uint32
-	d []byte
+	ix       *Index
+	count    int
+	offset   uint32
+	fileid   uint32
+	d        []byte
 	restrict []uint32
 }
 
@@ -392,7 +392,7 @@ func mergeOr(l1, l2 []uint32) []uint32 {
 		switch {
 		case j == len(l2) || (i < len(l1) && l1[i] < l2[j]):
 			l = append(l, l1[i])
-			i++		
+			i++
 		case i == len(l1) || (j < len(l2) && l1[i] > l2[j]):
 			l = append(l, l2[j])
 			j++

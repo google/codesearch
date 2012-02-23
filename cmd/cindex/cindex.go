@@ -54,10 +54,10 @@ func usage() {
 }
 
 var (
-	listFlag = flag.Bool("list", false, "list indexed paths and exit")
-	resetFlag = flag.Bool("reset", false, "discard existing index")
+	listFlag    = flag.Bool("list", false, "list indexed paths and exit")
+	resetFlag   = flag.Bool("reset", false, "discard existing index")
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
-	cpuProfile = flag.String("cpuprofile", "", "write cpu profile to this file")
+	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to this file")
 )
 
 func main() {
@@ -82,7 +82,7 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	
+
 	if *resetFlag && len(args) == 0 {
 		os.Remove(index.File())
 		return
@@ -110,7 +110,7 @@ func main() {
 	for len(args) > 0 && args[0] == "" {
 		args = args[1:]
 	}
-	
+
 	master := index.File()
 	if _, err := os.Stat(master); err != nil {
 		// Does not exist.
@@ -148,7 +148,7 @@ func main() {
 	}
 	log.Printf("flush index")
 	ix.Flush()
-	
+
 	if !*resetFlag {
 		log.Printf("merge %s %s", master, file)
 		index.Merge(file+"~", master, file)
@@ -158,4 +158,3 @@ func main() {
 	log.Printf("done")
 	return
 }
-

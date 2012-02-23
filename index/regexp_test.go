@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-var queryTests = []struct{
+var queryTests = []struct {
 	re string
-	q string
+	q  string
 }{
 	{`Abcdef`, `"Abc" "bcd" "cde" "def"`},
 	{`(abc)(def)`, `"abc" "bcd" "cde" "def"`},

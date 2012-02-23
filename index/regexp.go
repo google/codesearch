@@ -20,18 +20,18 @@ import (
 // the Query (using a trigram index) before running the comparatively
 // more expensive regexp machinery.
 type Query struct {
-	Op QueryOp
+	Op      QueryOp
 	Trigram []string
-	Sub []*Query
+	Sub     []*Query
 }
 
 type QueryOp int
 
 const (
-	QAll QueryOp = iota  // Everything matches
-	QNone  // Nothing matches
-	QAnd  // All in Sub and Trigram must match
-	QOr  // At least one in Sub or Trigram must match
+	QAll  QueryOp = iota // Everything matches
+	QNone                // Nothing matches
+	QAnd                 // All in Sub and Trigram must match
+	QOr                  // At least one in Sub or Trigram must match
 )
 
 var allQuery = &Query{Op: QAll}
@@ -50,13 +50,13 @@ func (q *Query) or(r *Query) *Query {
 // andOr returns the query q AND r or q OR r, possibly reusing q's and r's storage.
 // It works hard to avoid creating unnecessarily complicated structures.
 func (q *Query) andOr(r *Query, op QueryOp) (out *Query) {
-opstr := "&"
-if op == QOr {
-	opstr = "|"
-}
-//println("andOr", q.String(), opstr, r.String())
-//defer func() { println("  ->", out.String()) }()
-_ = opstr
+	opstr := "&"
+	if op == QOr {
+		opstr = "|"
+	}
+	//println("andOr", q.String(), opstr, r.String())
+	//defer func() { println("  ->", out.String()) }()
+	_ = opstr
 
 	if len(q.Trigram) == 0 && len(q.Sub) == 1 {
 		q = q.Sub[0]
@@ -69,24 +69,24 @@ _ = opstr
 	// If q ⇒ r, q AND r ≡ q.
 	// If q ⇒ r, q OR r ≡ r.
 	if q.implies(r) {
-//println(q.String(), "implies", r.String())
+		//println(q.String(), "implies", r.String())
 		if op == QAnd {
 			return q
 		}
 		return r
 	}
 	if r.implies(q) {
-//println(r.String(), "implies", q.String())
+		//println(r.String(), "implies", q.String())
 		if op == QAnd {
 			return r
 		}
 		return q
 	}
-	
+
 	// Both q and r are QAnd or QOr.
 	// If they match or can be made to match, merge.
-	qAtom := len(q.Trigram)==1 && len(q.Sub)==0
-	rAtom := len(r.Trigram)==1 && len(r.Sub)==0
+	qAtom := len(q.Trigram) == 1 && len(q.Sub) == 0
+	rAtom := len(r.Trigram) == 1 && len(r.Sub) == 0
 	if q.Op == op && (r.Op == op || rAtom) {
 		q.Trigram = stringSet.union(q.Trigram, r.Trigram, false)
 		q.Sub = append(q.Sub, r.Sub...)
@@ -158,7 +158,7 @@ _ = opstr
 		// Call andOr recursively in case q and r can now be simplified
 		// (we removed some trigrams).
 		s := q.andOr(r, op)
-		
+
 		// Add in factored trigrams.
 		otherOp := QAnd + QOr - op
 		t := &Query{Op: otherOp, Trigram: common}
@@ -188,7 +188,7 @@ func (q *Query) implies(r *Query) bool {
 	}
 
 	if q.Op == QOr && r.Op == QOr &&
-		len(q.Trigram) > 0 && len(q.Sub) == 0 && 
+		len(q.Trigram) > 0 && len(q.Sub) == 0 &&
 		stringSet.isSubsetOf(q.Trigram, r.Trigram) {
 		return true
 	}
@@ -246,7 +246,7 @@ func (q *Query) maybeRewrite(op QueryOp) {
 		}
 		return
 	}
-	
+
 	// Just a sub-node: throw away wrapper.
 	if len(q.Sub) == 1 {
 		*q = *q.Sub[0]
@@ -265,15 +265,15 @@ func (q *Query) andTrigrams(t stringSet) *Query {
 		return q
 	}
 
-//println("andtrigrams", strings.Join(t, ","))
+	//println("andtrigrams", strings.Join(t, ","))
 	or := noneQuery
 	for _, tt := range t {
-		var trig stringSet		
+		var trig stringSet
 		for i := 0; i+3 <= len(tt); i++ {
-			trig.add(tt[i:i+3])
+			trig.add(tt[i : i+3])
 		}
 		trig.clean(false)
-//println(tt, "trig", strings.Join(trig, ","))
+		//println(tt, "trig", strings.Join(trig, ","))
 		or = or.or(&Query{Op: QAnd, Trigram: trig})
 	}
 	q = q.and(or)
@@ -290,15 +290,15 @@ func (q *Query) String() string {
 	if q.Op == QAll {
 		return "+"
 	}
-	
+
 	if len(q.Sub) == 0 && len(q.Trigram) == 1 {
 		return strconv.Quote(q.Trigram[0])
 	}
-	
+
 	var (
-		s string
+		s     string
 		sjoin string
-		end string
+		end   string
 		tjoin string
 	)
 	if q.Op == QAnd {
@@ -341,13 +341,13 @@ func RegexpQuery(re *syntax.Regexp) *Query {
 type regexpInfo struct {
 	// canEmpty records whether the regexp matches the empty string
 	canEmpty bool
-	
+
 	// exact is the exact set of strings matching the regexp.
 	exact stringSet
-	
+
 	// if exact is nil, prefix is the set of possible match prefixes,
 	// and suffix is the set of possible match suffixes.
-	prefix stringSet  // otherwise: the exact set of matching prefixes ...
+	prefix stringSet // otherwise: the exact set of matching prefixes ...
 	suffix stringSet // ... and suffixes
 
 	// match records a query that must be satisfied by any
@@ -382,9 +382,9 @@ const (
 func anyMatch() regexpInfo {
 	return regexpInfo{
 		canEmpty: true,
-		prefix: []string{""},
-		suffix: []string{""},
-		match: allQuery,
+		prefix:   []string{""},
+		suffix:   []string{""},
+		match:    allQuery,
 	}
 }
 
@@ -394,7 +394,7 @@ func anyChar() regexpInfo {
 	return regexpInfo{
 		prefix: []string{""},
 		suffix: []string{""},
-		match: allQuery,
+		match:  allQuery,
 	}
 }
 
@@ -411,15 +411,15 @@ func noMatch() regexpInfo {
 func emptyString() regexpInfo {
 	return regexpInfo{
 		canEmpty: true,
-		exact: []string{""},
-		match: allQuery,
+		exact:    []string{""},
+		match:    allQuery,
 	}
 }
 
 // analyze returns the regexpInfo for the regexp re.
 func analyze(re *syntax.Regexp) (ret regexpInfo) {
-//println("analyze", re.String())
-//defer func() { println("->", ret.String()) }()
+	//println("analyze", re.String())
+	//defer func() { println("->", ret.String()) }()
 	var info regexpInfo
 	switch re.Op {
 	case syntax.OpNoMatch:
@@ -454,19 +454,19 @@ func analyze(re *syntax.Regexp) (ret regexpInfo) {
 			// Multi-letter case-folded string:
 			// treat as concatenation of single-letter case-folded strings.
 			re1 := &syntax.Regexp{
-				Op: syntax.OpLiteral,
+				Op:    syntax.OpLiteral,
 				Flags: syntax.FoldCase,
 			}
 			info = emptyString()
 			for i := range re.Rune {
-				re1.Rune = re.Rune[i:i+1]
+				re1.Rune = re.Rune[i : i+1]
 				info = concat(info, analyze(re1))
 			}
 			return info
 		}
 		info.exact = stringSet{string(re.Rune)}
 		info.match = allQuery
-		
+
 	case syntax.OpAnyCharNotNL, syntax.OpAnyChar:
 		return anyChar()
 
@@ -518,14 +518,14 @@ func analyze(re *syntax.Regexp) (ret regexpInfo) {
 		}
 
 		n := 0
-		for i := 0; i < len(re.Rune); i+=2 {
+		for i := 0; i < len(re.Rune); i += 2 {
 			n += int(re.Rune[i+1] - re.Rune[i])
 		}
 		// If the class is too large, it's okay to overestimate.
 		if n > 100 {
 			return anyChar()
 		}
-		
+
 		info.exact = []string{}
 		for i := 0; i < len(re.Rune); i += 2 {
 			lo, hi := re.Rune[i], re.Rune[i+1]
@@ -556,8 +556,8 @@ func fold(f func(x, y regexpInfo) regexpInfo, sub []*syntax.Regexp, zero regexpI
 
 // concat returns the regexp info for xy given x and y.
 func concat(x, y regexpInfo) (out regexpInfo) {
-//println("concat", x.String(), "...", y.String())
-//defer func() { println("->", out.String()) }()
+	//println("concat", x.String(), "...", y.String())
+	//defer func() { println("->", out.String()) }()
 	var xy regexpInfo
 	xy.match = x.match.and(y.match)
 	if x.exact.have() && y.exact.have() {
@@ -580,7 +580,7 @@ func concat(x, y regexpInfo) (out regexpInfo) {
 			}
 		}
 	}
-	
+
 	// If all the possible strings in the cross product of x.suffix
 	// and y.prefix are long enough, then the trigram for one
 	// of them must be present and would not necessarily be
@@ -588,10 +588,10 @@ func concat(x, y regexpInfo) (out regexpInfo) {
 	// at maxSet just to keep the sets manageable.
 	if !x.exact.have() && !y.exact.have() &&
 		x.suffix.size() <= maxSet && y.prefix.size() <= maxSet &&
-		x.suffix.minLen() + y.prefix.minLen() >= 3 {
+		x.suffix.minLen()+y.prefix.minLen() >= 3 {
 		xy.match = xy.match.andTrigrams(x.suffix.cross(y.prefix, false))
 	}
-	
+
 	xy.simplify(false)
 	return xy
 }
@@ -621,8 +621,8 @@ func (info *regexpInfo) addExact() {
 
 // simplify simplifies the regexpInfo when the exact set gets too large.
 func (info *regexpInfo) simplify(force bool) {
-//println("  simplify", info.String(), " force=", force)
-//defer func() { println("  ->", info.String()) }()
+	//println("  simplify", info.String(), " force=", force)
+	//defer func() { println("  ->", info.String()) }()
 	// If there are now too many exact strings,
 	// loop over them, adding trigrams and moving
 	// the relevant pieces into prefix and suffix.
@@ -641,7 +641,7 @@ func (info *regexpInfo) simplify(force bool) {
 		}
 		info.exact = nil
 	}
-	
+
 	if !info.exact.have() {
 		info.simplifySet(&info.prefix)
 		info.simplifySet(&info.suffix)
@@ -656,7 +656,7 @@ func (info *regexpInfo) simplify(force bool) {
 func (info *regexpInfo) simplifySet(s *stringSet) {
 	t := *s
 	t.clean(s == &info.suffix)
-	
+
 	// Add the OR of the current prefix/suffix set to the query.
 	info.match = info.match.andTrigrams(t)
 
@@ -737,13 +737,13 @@ func (s stringSet) contains(str string) bool {
 
 type byPrefix []string
 
-func (x *byPrefix) Len() int { return len(*x) }
-func (x *byPrefix) Swap(i, j int) { (*x)[i], (*x)[j] = (*x)[j], (*x)[i] }
+func (x *byPrefix) Len() int           { return len(*x) }
+func (x *byPrefix) Swap(i, j int)      { (*x)[i], (*x)[j] = (*x)[j], (*x)[i] }
 func (x *byPrefix) Less(i, j int) bool { return (*x)[i] < (*x)[j] }
 
 type bySuffix []string
 
-func (x *bySuffix) Len() int { return len(*x) }
+func (x *bySuffix) Len() int      { return len(*x) }
 func (x *bySuffix) Swap(i, j int) { (*x)[i], (*x)[j] = (*x)[j], (*x)[i] }
 func (x *bySuffix) Less(i, j int) bool {
 	s := (*x)[i]
@@ -829,7 +829,7 @@ func (s stringSet) cross(t stringSet, isSuffix bool) stringSet {
 	p := stringSet{}
 	for _, ss := range s {
 		for _, tt := range t {
-			p.add(ss+tt)
+			p.add(ss + tt)
 		}
 	}
 	p.clean(isSuffix)

@@ -11,8 +11,8 @@ import (
 	"testing"
 )
 
-var nstateTests = []struct{
-	q []uint32
+var nstateTests = []struct {
+	q       []uint32
 	partial rune
 }{
 	{[]uint32{1, 2, 3}, 1},
@@ -39,10 +39,10 @@ func TestNstateEnc(t *testing.T) {
 	}
 }
 
-var matchTests = []struct{
+var matchTests = []struct {
 	re string
-	s string
-	m []int
+	s  string
+	m  []int
 }{
 	// Adapted from go/src/pkg/regexp/find_test.go.
 	{`a+`, "abc\ndef\nghi\n", []int{1}},
@@ -106,9 +106,9 @@ var matchTests = []struct{
 	{`(?:A(?:A|a))`, "Aa", []int{1}},
 	{`(?:A|(?:A|a))`, "a", []int{1}},
 	{`(a){0}`, "", []int{1}},
-//	{`(?-s)(?:(?:^).)`, "\n", nil},
-//	{`(?s)(?:(?:^).)`, "\n", []int{1}},
-//	{`(?:(?:^).)`, "\n", nil},
+	//	{`(?-s)(?:(?:^).)`, "\n", nil},
+	//	{`(?s)(?:(?:^).)`, "\n", []int{1}},
+	//	{`(?:(?:^).)`, "\n", nil},
 	{`\b`, "x", []int{1}},
 	{`\b`, "xx", []int{1}},
 	{`\b`, "x y", []int{1}},
@@ -147,7 +147,7 @@ var matchTests = []struct{
 
 func TestMatch(t *testing.T) {
 	for _, tt := range matchTests {
-		re, err := Compile("(?m)"+tt.re)
+		re, err := Compile("(?m)" + tt.re)
 		if err != nil {
 			t.Errorf("Compile(%#q): %v", tt.re, err)
 			continue
@@ -168,8 +168,8 @@ func grep(re *Regexp, b []byte) []int {
 		if i < 0 {
 			break
 		}
-		start := bytes.LastIndex(b[:i], nl)+1
-		end := i+1
+		start := bytes.LastIndex(b[:i], nl) + 1
+		end := i + 1
 		if end > len(b) {
 			end = len(b)
 		}
@@ -187,11 +187,11 @@ func grep(re *Regexp, b []byte) []int {
 }
 
 var grepTests = []struct {
-	re string
-	s string
+	re  string
+	s   string
 	out string
 	err string
-	g Grep
+	g   Grep
 }{
 	{re: `a+`, s: "abc\ndef\nghalloo\n", out: "input:abc\ninput:ghalloo\n"},
 	{re: `x.*y`, s: "xay\nxa\ny\n", out: "input:xay\n"},
@@ -199,7 +199,7 @@ var grepTests = []struct {
 
 func TestGrep(t *testing.T) {
 	for i, tt := range grepTests {
-		re, err := Compile("(?m)"+tt.re)
+		re, err := Compile("(?m)" + tt.re)
 		if err != nil {
 			t.Errorf("Compile(%#q): %v", tt.re, err)
 			continue

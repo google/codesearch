@@ -42,8 +42,8 @@ type idrange struct {
 }
 
 type postIndex struct {
-	tri uint32
-	count uint32
+	tri    uint32
+	count  uint32
 	offset uint32
 }
 
@@ -71,7 +71,7 @@ func Merge(dst, src1, src2 string) {
 			i1++
 		}
 		hi := i1
-		
+
 		// Record range before the shadow.
 		if old < lo {
 			map1 = append(map1, idrange{old, lo, new})
@@ -226,22 +226,22 @@ func Merge(dst, src1, src2 string) {
 	ix3.writeUint32(postIndex)
 	ix3.writeString(trailerMagic)
 	ix3.flush()
-	
+
 	os.Remove(nameIndexFile.name)
 	os.Remove(w.postIndexFile.name)
 }
 
 type postMapReader struct {
-	ix *Index
-	idmap []idrange
-	triNum uint32
+	ix      *Index
+	idmap   []idrange
+	triNum  uint32
 	trigram uint32
-	count uint32
-	offset uint32
-	d []byte
-	oldid uint32
-	fileid uint32
-	i int
+	count   uint32
+	offset  uint32
+	d       []byte
+	oldid   uint32
+	fileid  uint32
+	i       int
 }
 
 func (r *postMapReader) init(ix *Index, idmap []idrange) {
@@ -263,12 +263,12 @@ func (r *postMapReader) load() {
 		r.fileid = ^uint32(0)
 		return
 	}
-	r.trigram, r.count, r.offset = r.ix.listAt(r.triNum*postEntrySize)
+	r.trigram, r.count, r.offset = r.ix.listAt(r.triNum * postEntrySize)
 	if r.count == 0 {
 		r.fileid = ^uint32(0)
 		return
 	}
-	r.d = r.ix.slice(r.ix.postData + r.offset + 3, -1)
+	r.d = r.ix.slice(r.ix.postData+r.offset+3, -1)
 	r.oldid = ^uint32(0)
 	r.i = 0
 }
@@ -294,21 +294,21 @@ func (r *postMapReader) nextId() bool {
 			continue
 		}
 		r.fileid = r.idmap[r.i].new + r.oldid - r.idmap[r.i].lo
-		return true			
+		return true
 	}
-	
+
 	r.fileid = ^uint32(0)
 	return false
 }
 
 type postDataWriter struct {
-	out *bufWriter
+	out           *bufWriter
 	postIndexFile *bufWriter
-	buf [10]byte
-	base uint32
+	buf           [10]byte
+	base          uint32
 	count, offset uint32
-	last uint32
-	t uint32
+	last          uint32
+	t             uint32
 }
 
 func (w *postDataWriter) init(out *bufWriter) {

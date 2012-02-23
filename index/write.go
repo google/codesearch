@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 	"unsafe"
-	
+
 	"code.google.com/p/codesearch/sparse"
 )
 
@@ -33,40 +33,40 @@ import (
 
 // An IndexWriter creates an on-disk index corresponding to a set of files.
 type IndexWriter struct {
-	LogSkip bool  // log information about skipped files
-	Verbose bool  // log status using package log
+	LogSkip bool // log information about skipped files
+	Verbose bool // log status using package log
 
-	trigram *sparse.Set  // trigrams for the current file
-	buf [8]byte  // scratch buffer
+	trigram *sparse.Set // trigrams for the current file
+	buf     [8]byte     // scratch buffer
 
 	paths []string
 
-	nameData *bufWriter  // temp file holding list of names
-	nameLen uint32  // number of bytes written to nameData
-	nameIndex *bufWriter  // temp file holding name index
-	numName int  // number of names written
+	nameData   *bufWriter // temp file holding list of names
+	nameLen    uint32     // number of bytes written to nameData
+	nameIndex  *bufWriter // temp file holding name index
+	numName    int        // number of names written
 	totalBytes int64
 
-	post []postEntry  // list of (trigram, file#) pairs
-	postFile []*os.File  // flushed post entries
+	post      []postEntry // list of (trigram, file#) pairs
+	postFile  []*os.File  // flushed post entries
 	postIndex *bufWriter  // temp file holding posting list index
 
-	inbuf []byte  // input buffer
-	main *bufWriter // main index file
+	inbuf []byte     // input buffer
+	main  *bufWriter // main index file
 }
 
-const npost = 64<<20 / 8  // 64 MB worth of post entries
+const npost = 64 << 20 / 8 // 64 MB worth of post entries
 
 // Create returns a new IndexWriter that will write the index to file.
 func Create(file string) *IndexWriter {
 	return &IndexWriter{
-		trigram: sparse.NewSet(1<<24),
-		nameData: bufCreate(""),
+		trigram:   sparse.NewSet(1 << 24),
+		nameData:  bufCreate(""),
 		nameIndex: bufCreate(""),
 		postIndex: bufCreate(""),
-		main: bufCreate(file),
-		post: make([]postEntry, 0, npost),
-		inbuf: make([]byte, 16384),
+		main:      bufCreate(file),
+		post:      make([]postEntry, 0, npost),
+		inbuf:     make([]byte, 16384),
 	}
 }
 
@@ -74,7 +74,7 @@ func Create(file string) *IndexWriter {
 type postEntry uint64
 
 func (p postEntry) trigram() uint32 {
-	return uint32(p>>32)
+	return uint32(p >> 32)
 }
 
 func (p postEntry) fileid() uint32 {
@@ -91,8 +91,8 @@ func makePostEntry(trigram, fileid uint32) postEntry {
 // bytes, if it contains a line longer than maxLineLen bytes,
 // or if it contains more than maxTextTrigrams distinct trigrams.
 const (
-	maxFileLen = 1<<30
-	maxLineLen = 2000
+	maxFileLen      = 1 << 30
+	maxLineLen      = 2000
 	maxTextTrigrams = 20000
 )
 
@@ -118,15 +118,15 @@ func (ix *IndexWriter) AddFile(name string) {
 func (ix *IndexWriter) Add(name string, f io.Reader) {
 	ix.trigram.Reset()
 	var (
-		c = byte(0)
-		i = 0
-		buf = ix.inbuf[:0]
-		tv = uint32(0)
-		n = int64(0)
+		c       = byte(0)
+		i       = 0
+		buf     = ix.inbuf[:0]
+		tv      = uint32(0)
+		n       = int64(0)
 		linelen = 0
 	)
 	for {
-		tv = (tv<<8) & (1<<24 - 1)
+		tv = (tv << 8) & (1<<24 - 1)
 		if i >= len(buf) {
 			n, err := f.Read(buf[:cap(buf)])
 			if n == 0 {
@@ -149,7 +149,7 @@ func (ix *IndexWriter) Add(name string, f io.Reader) {
 		if n++; n >= 3 {
 			ix.trigram.Add(tv)
 		}
-		if !validUTF8((tv>>8) & 0xFF, tv & 0xFF) {
+		if !validUTF8((tv>>8)&0xFF, tv&0xFF) {
 			if ix.LogSkip {
 				log.Printf("%s: invalid UTF-8, ignoring\n", name)
 			}
@@ -216,7 +216,7 @@ func (ix *IndexWriter) Flush() {
 		ix.main.writeUint32(v)
 	}
 	ix.main.writeString(trailerMagic)
-	
+
 	os.Remove(ix.nameData.name)
 	for _, f := range ix.postFile {
 		os.Remove(f.Name())
@@ -263,10 +263,10 @@ func (ix *IndexWriter) flushPost() {
 		log.Printf("flush %d entries to %s", len(ix.post), w.Name())
 	}
 	sortPost(ix.post)
-	
+
 	// Write the raw ix.post array to disk as is.
 	// This process is the one reading it back in, so byte order is not a concern.
-	data := (*[npost*8]byte)(unsafe.Pointer(&ix.post[0]))[:len(ix.post)*8]
+	data := (*[npost * 8]byte)(unsafe.Pointer(&ix.post[0]))[:len(ix.post)*8]
 	if n, err := w.Write(data); err != nil || n < len(data) {
 		if err != nil {
 			log.Fatal(err)
@@ -283,7 +283,7 @@ func (ix *IndexWriter) flushPost() {
 // into posting lists, writing the resulting lists to out.
 func (ix *IndexWriter) mergePost(out *bufWriter) {
 	var h postHeap
-	
+
 	log.Printf("merge %d files + mem", len(ix.postFile))
 	for _, f := range ix.postFile {
 		h.addFile(f)
@@ -298,15 +298,15 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 		npost++
 		offset := out.offset() - offset0
 		trigram := e.trigram()
-		ix.buf[0] = byte(trigram>>16)
-		ix.buf[1] = byte(trigram>>8)
+		ix.buf[0] = byte(trigram >> 16)
+		ix.buf[1] = byte(trigram >> 8)
 		ix.buf[2] = byte(trigram)
 
 		// posting list
 		fileid := ^uint32(0)
 		nfile := uint32(0)
 		out.write(ix.buf[:3])
-		for ; e.trigram() == trigram && trigram != 1<<24 - 1; e = h.next() {
+		for ; e.trigram() == trigram && trigram != 1<<24-1; e = h.next() {
 			out.writeUvarint(e.fileid() - fileid)
 			fileid = e.fileid()
 			nfile++
@@ -317,8 +317,8 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 		ix.postIndex.write(ix.buf[:3])
 		ix.postIndex.writeUint32(nfile)
 		ix.postIndex.writeUint32(offset)
-		
-		if trigram == 1<<24 - 1 {
+
+		if trigram == 1<<24-1 {
 			break
 		}
 	}
@@ -327,7 +327,7 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 // A postChunk represents a chunk of post entries flushed to disk or
 // still in memory.
 type postChunk struct {
-	e postEntry  // next entry
+	e postEntry   // next entry
 	m []postEntry // remaining entries after e
 }
 
@@ -384,7 +384,7 @@ func (h *postHeap) empty() bool {
 // It returns a postEntry with trigram == 1<<24 - 1 if h is empty.
 func (h *postHeap) next() postEntry {
 	if len(h.ch) == 0 {
-		return makePostEntry(1<<24 - 1, 0)
+		return makePostEntry(1<<24-1, 0)
 	}
 	ch := h.ch[0]
 	e := ch.e
@@ -401,7 +401,7 @@ func (h *postHeap) next() postEntry {
 
 func (h *postHeap) pop() *postChunk {
 	ch := h.ch[0]
-	n := len(h.ch)-1
+	n := len(h.ch) - 1
 	h.ch[0] = h.ch[n]
 	h.ch = h.ch[:n]
 	if n > 1 {
@@ -421,12 +421,12 @@ func (h *postHeap) push(ch *postChunk) {
 func (h *postHeap) siftDown(i int) {
 	ch := h.ch
 	for {
-		j1 := 2*i+1
+		j1 := 2*i + 1
 		if j1 >= len(ch) {
 			break
 		}
 		j := j1
-		if j2 := j1+1; j2 < len(ch) && ch[j1].e >= ch[j2].e {
+		if j2 := j1 + 1; j2 < len(ch) && ch[j1].e >= ch[j2].e {
 			j = j2
 		}
 		if ch[i].e < ch[j].e {
@@ -440,7 +440,7 @@ func (h *postHeap) siftDown(i int) {
 func (h *postHeap) siftUp(j int) {
 	ch := h.ch
 	for {
-		i := (j-1)/2
+		i := (j - 1) / 2
 		if i == j || ch[i].e < ch[j].e {
 			break
 		}
@@ -452,8 +452,8 @@ func (h *postHeap) siftUp(j int) {
 type bufWriter struct {
 	name string
 	file *os.File
-	buf []byte
-	tmp [8]byte
+	buf  []byte
+	tmp  [8]byte
 }
 
 // bufCreate creates a new file with the given name and returns a
@@ -461,7 +461,7 @@ type bufWriter struct {
 // temporary file.
 func bufCreate(name string) *bufWriter {
 	var (
-		f *os.File
+		f   *os.File
 		err error
 	)
 	if name != "" {
@@ -474,7 +474,7 @@ func bufCreate(name string) *bufWriter {
 	}
 	return &bufWriter{
 		name: f.Name(),
-		buf: make([]byte, 0, 256<<10),
+		buf:  make([]byte, 0, 256<<10),
 		file: f,
 	}
 }
@@ -533,7 +533,7 @@ func (b *bufWriter) flush() {
 		log.Fatalf("writing %s: %v", b.name, err)
 	}
 	b.buf = b.buf[:0]
-}	
+}
 
 // finish flushes the file to disk and returns an open file ready for reading.
 func (b *bufWriter) finish() *os.File {
@@ -544,34 +544,34 @@ func (b *bufWriter) finish() *os.File {
 }
 
 func (b *bufWriter) writeTrigram(t uint32) {
-	if cap(b.buf) - len(b.buf) < 3 {
+	if cap(b.buf)-len(b.buf) < 3 {
 		b.flush()
 	}
 	b.buf = append(b.buf, byte(t>>16), byte(t>>8), byte(t))
 }
 
 func (b *bufWriter) writeUint32(x uint32) {
-	if cap(b.buf) - len(b.buf) < 4 {
+	if cap(b.buf)-len(b.buf) < 4 {
 		b.flush()
 	}
 	b.buf = append(b.buf, byte(x>>24), byte(x>>16), byte(x>>8), byte(x))
 }
 
 func (b *bufWriter) writeUvarint(x uint32) {
-	if cap(b.buf) - len(b.buf) < 5 {
+	if cap(b.buf)-len(b.buf) < 5 {
 		b.flush()
 	}
 	switch {
 	case x < 1<<7:
 		b.buf = append(b.buf, byte(x))
 	case x < 1<<14:
-		b.buf = append(b.buf, byte(x | 0x80), byte(x>>7))
+		b.buf = append(b.buf, byte(x|0x80), byte(x>>7))
 	case x < 1<<21:
-		b.buf = append(b.buf, byte(x | 0x80), byte(x>>7 | 0x80), byte(x>>14))
+		b.buf = append(b.buf, byte(x|0x80), byte(x>>7|0x80), byte(x>>14))
 	case x < 1<<28:
-		b.buf = append(b.buf, byte(x | 0x80), byte(x>>7 | 0x80), byte(x>>14 | 0x80), byte(x>>21))
+		b.buf = append(b.buf, byte(x|0x80), byte(x>>7|0x80), byte(x>>14|0x80), byte(x>>21))
 	default:
-		b.buf = append(b.buf, byte(x | 0x80), byte(x>>7 | 0x80), byte(x>>14 | 0x80), byte(x>>21 | 0x80), byte(x>>28))
+		b.buf = append(b.buf, byte(x|0x80), byte(x>>7|0x80), byte(x>>14|0x80), byte(x>>21|0x80), byte(x>>28))
 	}
 }
 
@@ -597,8 +597,9 @@ func validUTF8(c1, c2 uint32) bool {
 // and the top 8 bits are always zero, so there are only
 // 24 bits to sort.  Run two rounds of 12-bit radix sort.
 const sortK = 12
+
 var sortTmp []postEntry
-var sortN [1<<sortK]int
+var sortN [1 << sortK]int
 
 func sortPost(post []postEntry) {
 	if len(post) > len(sortTmp) {

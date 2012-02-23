@@ -153,7 +153,6 @@ func instString(i *syntax.Inst) string {
 	return b.String()
 }
 
-
 func bw(b *bytes.Buffer, args ...string) {
 	for _, s := range args {
 		b.WriteString(s)

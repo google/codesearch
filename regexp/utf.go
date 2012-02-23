@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	instFail = syntax.InstFail
-	instAlt = syntax.InstAlt
-	instByteRange = syntax.InstRune | 0x80	// local opcode
-	
-	argFold = 1<<16
+	instFail      = syntax.InstFail
+	instAlt       = syntax.InstAlt
+	instByteRange = syntax.InstRune | 0x80 // local opcode
+
+	argFold = 1 << 16
 )
 
 func toByteProg(prog *syntax.Prog) error {
@@ -34,7 +34,7 @@ func toByteProg(prog *syntax.Prog) error {
 				}
 				break
 			}
-			
+
 			r := i.Rune
 			if syntax.Flags(i.Arg)&syntax.FoldCase != 0 {
 				// Build folded list.
@@ -48,7 +48,7 @@ func toByteProg(prog *syntax.Prog) error {
 				}
 				r = rr
 			}
-			
+
 			b.init(prog, uint32(pc), i.Out)
 			if len(r) == 1 {
 				b.addRange(r[0], r[0], false)
@@ -79,7 +79,7 @@ func oneByteRange(i *syntax.Inst) (lo, hi byte, fold, ok bool) {
 	if i.Op != syntax.InstRune {
 		return
 	}
-	fold = syntax.Flags(i.Arg)&syntax.FoldCase != 0 
+	fold = syntax.Flags(i.Arg)&syntax.FoldCase != 0
 	if len(i.Rune) == 1 || len(i.Rune) == 2 && i.Rune[0] == i.Rune[1] {
 		r := i.Rune[0]
 		if r >= utf8.RuneSelf {
@@ -99,8 +99,8 @@ func oneByteRange(i *syntax.Inst) (lo, hi byte, fold, ok bool) {
 			}
 		}
 		return byte(i.Rune[0]), byte(i.Rune[1]), fold, true
-	}	
-	if len(i.Rune) == 4 && i.Rune[0] == i.Rune[1] && i.Rune[2] ==  i.Rune[3] && unicode.SimpleFold(i.Rune[0]) == i.Rune[2] && unicode.SimpleFold(i.Rune[2]) == i.Rune[0] {
+	}
+	if len(i.Rune) == 4 && i.Rune[0] == i.Rune[1] && i.Rune[2] == i.Rune[3] && unicode.SimpleFold(i.Rune[0]) == i.Rune[2] && unicode.SimpleFold(i.Rune[2]) == i.Rune[0] {
 		return byte(i.Rune[0]), byte(i.Rune[0]), true, true
 	}
 
@@ -126,22 +126,22 @@ func maxRune(n int) rune {
 	if n == 1 {
 		b = 7
 	} else {
-		b = 8 - (n+1) + 6*(n-1)
+		b = 8 - (n + 1) + 6*(n-1)
 	}
 	return 1<<uint(b) - 1
 }
 
 type cacheKey struct {
 	lo, hi uint8
-	fold bool
-	next uint32
+	fold   bool
+	next   uint32
 }
 
 type runeBuilder struct {
 	begin uint32
-	out uint32
+	out   uint32
 	cache map[cacheKey]uint32
-	p *syntax.Prog
+	p     *syntax.Prog
 }
 
 func (b *runeBuilder) init(p *syntax.Prog, begin, out uint32) {
@@ -183,7 +183,7 @@ func (b *runeBuilder) suffix(lo, hi byte, fold bool, next uint32) uint32 {
 	if pc, ok := b.cache[key]; ok {
 		return pc
 	}
-	
+
 	pc := b.uncachedSuffix(lo, hi, fold, next)
 	b.cache[key] = pc
 	return pc
@@ -214,11 +214,11 @@ func (b *runeBuilder) addRange(lo, hi rune, fold bool) {
 	if lo > hi {
 		return
 	}
-	
+
 	// TODO: Pick off 80-10FFFF for special handling?
 	if lo == 0x80 && hi == 0x10FFFF {
 	}
-	
+
 	// Split range into same-length sized ranges.
 	for i := 1; i < utf8.UTFMax; i++ {
 		max := maxRune(i)
@@ -228,16 +228,16 @@ func (b *runeBuilder) addRange(lo, hi rune, fold bool) {
 			return
 		}
 	}
-	
+
 	// ASCII range is special.
 	if hi < utf8.RuneSelf {
 		b.addBranch(b.suffix(byte(lo), byte(hi), fold, 0))
 		return
 	}
-	
+
 	// Split range into sections that agree on leading bytes.
 	for i := 1; i < utf8.UTFMax; i++ {
-		m := rune(1)<<uint(6*i) - 1	// last i bytes of UTF-8 sequence
+		m := rune(1)<<uint(6*i) - 1 // last i bytes of UTF-8 sequence
 		if lo&^m != hi&^m {
 			if lo&m != 0 {
 				b.addRange(lo, lo|m, fold)
@@ -245,13 +245,13 @@ func (b *runeBuilder) addRange(lo, hi rune, fold bool) {
 				return
 			}
 			if hi&m != m {
-				b.addRange(lo, hi&^m - 1, fold)
+				b.addRange(lo, hi&^m-1, fold)
 				b.addRange(hi&^m, hi, fold)
 				return
 			}
 		}
 	}
-	
+
 	// Finally.  Generate byte matching equivalent for lo-hi.
 	var ulo, uhi [utf8.UTFMax]byte
 	n := utf8.EncodeRune(ulo[:], lo)
@@ -259,9 +259,9 @@ func (b *runeBuilder) addRange(lo, hi rune, fold bool) {
 	if n != m {
 		panic("codesearch/regexp: bad utf-8 math")
 	}
-	
+
 	pc := uint32(0)
-	for i := n-1; i >= 0; i-- {
+	for i := n - 1; i >= 0; i-- {
 		pc = b.suffix(ulo[i], uhi[i], false, pc)
 	}
 	b.addBranch(pc)

@@ -46,12 +46,12 @@ func usage() {
 }
 
 var (
-	fFlag = flag.String("f", "", "search only files with names matching this regexp")
-	iFlag = flag.Bool("i", false, "case-insensitive search")
+	fFlag       = flag.String("f", "", "search only files with names matching this regexp")
+	iFlag       = flag.Bool("i", false, "case-insensitive search")
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
-	bruteFlag = flag.Bool("brute", false, "brute force - search all files in index")
-	cpuProfile = flag.String("cpuprofile", "", "write cpu profile to this file")
-	
+	bruteFlag   = flag.Bool("brute", false, "brute force - search all files in index")
+	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to this file")
+
 	matches bool
 )
 
@@ -65,11 +65,11 @@ func Main() {
 	flag.Usage = usage
 	flag.Parse()
 	args := flag.Args()
-	
+
 	if len(args) != 1 {
 		usage()
 	}
-	
+
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
@@ -120,7 +120,7 @@ func Main() {
 		}
 		g.File(name)
 	}
-	
+
 	matches = g.Match
 }
 

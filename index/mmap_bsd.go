@@ -14,7 +14,7 @@ import (
 
 // missing from package syscall on freebsd, openbsd
 const (
-	_PROT_READ = 1
+	_PROT_READ  = 1
 	_MAP_SHARED = 1
 )
 

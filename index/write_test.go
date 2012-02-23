@@ -13,19 +13,19 @@ import (
 	"testing"
 )
 
-var trivialFiles = map[string]string {
-	"f0": "\n\n",
-	"file1": "\na\n",
+var trivialFiles = map[string]string{
+	"f0":       "\n\n",
+	"file1":    "\na\n",
 	"thefile2": "\nab\n",
-	"file3": "\nabc\n",
-	"afile4": "\ndabc\n",
-	"file5": "\nxyzw\n",
+	"file3":    "\nabc\n",
+	"afile4":   "\ndabc\n",
+	"file5":    "\nxyzw\n",
 }
 
 var trivialIndex = join(
 	// header
 	"csearch index 1\n",
-	
+
 	// list of paths
 	"\x00",
 
@@ -39,17 +39,17 @@ var trivialIndex = join(
 	"\x00",
 
 	// list of posting lists
-	"\na\n", fileList(2),  // file1
-	"\nab", fileList(3, 5),  // file3, thefile2
-	"\nda", fileList(0),  // afile4
-	"\nxy", fileList(4),  // file5
+	"\na\n", fileList(2), // file1
+	"\nab", fileList(3, 5), // file3, thefile2
+	"\nda", fileList(0), // afile4
+	"\nxy", fileList(4), // file5
 	"ab\n", fileList(5), // thefile2
-	"abc", fileList(0, 3),  // afile4, file3
-	"bc\n", fileList(0, 3),  // afile4, file3
-	"dab", fileList(0),  // afile4
-	"xyz", fileList(4),  // file5
-	"yzw", fileList(4),  // file5
-	"zw\n", fileList(4),  // file5
+	"abc", fileList(0, 3), // afile4, file3
+	"bc\n", fileList(0, 3), // afile4, file3
+	"dab", fileList(0), // afile4
+	"xyz", fileList(4), // file5
+	"yzw", fileList(4), // file5
+	"zw\n", fileList(4), // file5
 	"\xff\xff\xff", fileList(),
 
 	// name index
@@ -91,21 +91,21 @@ func join(s ...string) string {
 
 func u32(x uint32) string {
 	var buf [4]byte
-	buf[0] = byte(x>>24)
-	buf[1] = byte(x>>16)
-	buf[2] = byte(x>>8)
+	buf[0] = byte(x >> 24)
+	buf[1] = byte(x >> 16)
+	buf[2] = byte(x >> 8)
 	buf[3] = byte(x)
 	return string(buf[:])
 }
 
 func fileList(list ...uint32) string {
 	var buf []byte
-	
+
 	last := ^uint32(0)
 	for _, x := range list {
 		delta := x - last
 		for delta >= 0x80 {
-			buf = append(buf, byte(delta) | 0x80)
+			buf = append(buf, byte(delta)|0x80)
 			delta >>= 7
 		}
 		buf = append(buf, byte(delta))
@@ -163,5 +163,3 @@ func TestTrivialWrite(t *testing.T) {
 func TestTrivialWriteDisk(t *testing.T) {
 	testTrivialWrite(t, true)
 }
-
-

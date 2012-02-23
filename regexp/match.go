@@ -19,36 +19,37 @@ import (
 
 // A matcher holds the state for running regular expression search.
 type matcher struct {
-	prog *syntax.Prog  // compiled program
-	dstate map[string]*dstate  // dstate cache
-	start *dstate  // start state
-	startLine *dstate	// start state for beginning of line
-	z1, z2 nstate  // two temporary nstates
+	prog      *syntax.Prog       // compiled program
+	dstate    map[string]*dstate // dstate cache
+	start     *dstate            // start state
+	startLine *dstate            // start state for beginning of line
+	z1, z2    nstate             // two temporary nstates
 }
 
 // An nstate corresponds to an NFA state.
 type nstate struct {
-	q sparse.Set  // queue of program instructions
-	partial rune  // partially decoded rune (TODO)
-	flag flags  // flags (TODO)
+	q       sparse.Set // queue of program instructions
+	partial rune       // partially decoded rune (TODO)
+	flag    flags      // flags (TODO)
 }
 
 // The flags record state about a position between bytes in the text.
 type flags uint32
+
 const (
-	flagBOL flags = 1<<iota // beginning of line
-	flagEOL  // end of line
-	flagBOT  // beginning of text
-	flagEOT  // end of text
-	flagWord // last byte was word byte
+	flagBOL  flags = 1 << iota // beginning of line
+	flagEOL                    // end of line
+	flagBOT                    // beginning of text
+	flagEOT                    // end of text
+	flagWord                   // last byte was word byte
 )
 
 // A dstate corresponds to a DFA state.
 type dstate struct {
-	next [256]*dstate  // next state, per byte
-	enc string  // encoded nstate
-	matchNL bool  // match when next byte is \n
-	matchEOT bool  // match in this state at end of text
+	next     [256]*dstate // next state, per byte
+	enc      string       // encoded nstate
+	matchNL  bool         // match when next byte is \n
+	matchEOT bool         // match in this state at end of text
 }
 
 func (z *nstate) String() string {
@@ -71,7 +72,7 @@ func (z *nstate) enc() string {
 	}
 	sort.Ints(ids)
 	for _, id := range ids {
-		n := binary.PutUvarint(v[:], uint64(uint32(id) - last))
+		n := binary.PutUvarint(v[:], uint64(uint32(id)-last))
 		buf = append(buf, v[:n]...)
 		last = uint32(id)
 	}
@@ -109,7 +110,7 @@ func (z *nstate) dec(s string) {
 // dmatch is the state we're in when we've seen a match and are just
 // waiting for the end of the line.
 var dmatch = dstate{
-	matchNL: true,
+	matchNL:  true,
 	matchEOT: true,
 }
 
@@ -127,14 +128,14 @@ func init() {
 func (m *matcher) init(prog *syntax.Prog) error {
 	m.prog = prog
 	m.dstate = make(map[string]*dstate)
-	
+
 	m.z1.q.Init(uint32(len(prog.Inst)))
 	m.z2.q.Init(uint32(len(prog.Inst)))
 
-	m.addq(&m.z1.q, uint32(prog.Start), syntax.EmptyBeginLine | syntax.EmptyBeginText)
+	m.addq(&m.z1.q, uint32(prog.Start), syntax.EmptyBeginLine|syntax.EmptyBeginText)
 	m.z1.flag = flagBOL | flagBOT
 	m.start = m.cache(&m.z1)
-	
+
 	m.z1.q.Reset()
 	m.addq(&m.z1.q, uint32(prog.Start), syntax.EmptyBeginLine)
 	m.z1.flag = flagBOL
@@ -169,8 +170,8 @@ func (m *matcher) stepByte(runq, nextq *sparse.Set, c int, flag syntax.EmptyOp) 
 			if c == endText {
 				break
 			}
-			lo := int((i.Arg>>8)&0xFF)
-			hi := int(i.Arg&0xFF)
+			lo := int((i.Arg >> 8) & 0xFF)
+			hi := int(i.Arg & 0xFF)
 			if i.Arg&argFold != 0 && 'a' <= c && c <= 'z' {
 				c += 'A' - 'a'
 			}
@@ -242,7 +243,7 @@ func (m *matcher) computeNext(d *dstate, c int) *dstate {
 	// (something is gating on word boundaries).
 	m.stepEmpty(&this.q, &next.q, flag)
 	this, next = next, this
-	
+
 	// now compute flags after c.
 	flag = 0
 	next.flag = 0
@@ -267,7 +268,7 @@ func (m *matcher) cache(z *nstate) *dstate {
 	if d != nil {
 		return d
 	}
-	
+
 	d = &dstate{enc: enc}
 	m.dstate[enc] = d
 	d.matchNL = m.computeNext(d, '\n') == &dmatch
@@ -276,14 +277,14 @@ func (m *matcher) cache(z *nstate) *dstate {
 }
 
 func (m *matcher) match(b []byte, beginText, endText bool) (end int) {
-//	fmt.Printf("%v\n", m.prog)
+	//	fmt.Printf("%v\n", m.prog)
 
 	d := m.startLine
 	if beginText {
 		d = m.start
 	}
-//	m.z1.dec(d.enc)
-//	fmt.Printf("%v (%v)\n", &m.z1, d==&dmatch)
+	//	m.z1.dec(d.enc)
+	//	fmt.Printf("%v (%v)\n", &m.z1, d==&dmatch)
 	for i, c := range b {
 		d1 := d.next[c]
 		if d1 == nil {
@@ -298,8 +299,8 @@ func (m *matcher) match(b []byte, beginText, endText bool) (end int) {
 			d.next[c] = d1
 		}
 		d = d1
-//		m.z1.dec(d.enc)
-//		fmt.Printf("%#U: %v (%v, %v, %v)\n", c, &m.z1, d==&dmatch, d.matchNL, d.matchEOT)
+		//		m.z1.dec(d.enc)
+		//		fmt.Printf("%#U: %v (%v, %v, %v)\n", c, &m.z1, d==&dmatch, d.matchNL, d.matchEOT)
 	}
 	if d.matchNL || endText && d.matchEOT {
 		return len(b)
@@ -348,15 +349,15 @@ func isWordByte(c int) bool {
 
 // TODO:
 type Grep struct {
-	Regexp *Regexp  // regexp to search for
-	Stdout io.Writer  // output target
-	Stderr io.Writer  // error target
+	Regexp *Regexp   // regexp to search for
+	Stdout io.Writer // output target
+	Stderr io.Writer // error target
 
 	L bool // L flag - print file names only
 	C bool // C flag - print count of matches
 	N bool // N flag - print line numbers
 	H bool // H flag - do not print file names
-	
+
 	Match bool
 
 	buf []byte
@@ -376,7 +377,7 @@ func (g *Grep) File(name string) {
 		return
 	}
 	defer f.Close()
-	g.Reader(f, name)		
+	g.Reader(f, name)
 }
 
 var nl = []byte{'\n'}
@@ -399,13 +400,13 @@ func (g *Grep) Reader(r io.Reader, name string) {
 		g.buf = make([]byte, 1<<20)
 	}
 	var (
-		buf = g.buf[:0]
+		buf        = g.buf[:0]
 		needLineno = g.N
-		lineno = 0
-		count = 0
-		prefix = ""
-		beginText = true
-		endText = false
+		lineno     = 0
+		count      = 0
+		prefix     = ""
+		beginText  = true
+		endText    = false
 	)
 	if !g.H {
 		prefix = name + ":"
@@ -415,7 +416,7 @@ func (g *Grep) Reader(r io.Reader, name string) {
 		buf = buf[:len(buf)+n]
 		end := len(buf)
 		if err == nil {
-			end = bytes.LastIndex(buf, nl)+1
+			end = bytes.LastIndex(buf, nl) + 1
 		} else {
 			endText = true
 		}
@@ -462,7 +463,7 @@ func (g *Grep) Reader(r io.Reader, name string) {
 				fmt.Fprintf(g.Stderr, "%s: %v\n", name, err)
 			}
 			break
-		}		
+		}
 	}
 	if g.C && count > 0 {
 		fmt.Fprintf(g.Stdout, "%s: %d\n", name, count)

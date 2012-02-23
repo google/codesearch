@@ -10,7 +10,7 @@ import (
 	"log"
 	"os"
 	"runtime/pprof"
-	
+
 	"code.google.com/p/codesearch/regexp"
 )
 
@@ -29,7 +29,7 @@ func usage() {
 }
 
 var (
-	iflag = flag.Bool("i", false, "case-insensitive match")
+	iflag      = flag.Bool("i", false, "case-insensitive match")
 	cpuProfile = flag.String("cpuprofile", "", "write cpu profile to this file")
 )
 
@@ -72,5 +72,5 @@ func main() {
 	}
 	if !g.Match {
 		os.Exit(1)
-	}		
+	}
 }

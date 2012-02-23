@@ -10,13 +10,12 @@ import (
 	"testing"
 )
 
-var postFiles = map[string]string {
+var postFiles = map[string]string{
 	"file0": "",
 	"file1": "Google Code Search",
 	"file2": "Google Code Project Hosting",
 	"file3": "Google Web Search",
 }
-
 
 func tri(x, y, z byte) uint32 {
 	return uint32(x)<<16 | uint32(y)<<8 | uint32(z)

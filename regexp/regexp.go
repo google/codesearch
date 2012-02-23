@@ -16,8 +16,8 @@ func bug() {
 // A Regexp is NOT SAFE for concurrent use by multiple goroutines.
 type Regexp struct {
 	Syntax *syntax.Regexp
-	expr string // original expression
-	m matcher
+	expr   string // original expression
+	m      matcher
 }
 
 // String returns the source text used to compile the regular expression.
@@ -42,7 +42,7 @@ func Compile(expr string) (*Regexp, error) {
 	}
 	r := &Regexp{
 		Syntax: re,
-		expr:      expr,
+		expr:   expr,
 	}
 	if err := r.m.init(prog); err != nil {
 		return nil, err

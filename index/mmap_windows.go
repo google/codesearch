@@ -11,7 +11,7 @@ import (
 	"unsafe"
 )
 
-func mmapFile(f *os.File) mmapData {	
+func mmapFile(f *os.File) mmapData {
 	st, err := f.Stat()
 	if err != nil {
 		log.Fatal(err)
@@ -32,6 +32,6 @@ func mmapFile(f *os.File) mmapData {
 	if err != nil {
 		log.Fatalf("MapViewOfFile %s: %v", f.Name(), err)
 	}
-	data := (*[1<<30]byte)(unsafe.Pointer(addr))
+	data := (*[1 << 30]byte)(unsafe.Pointer(addr))
 	return mmapData{f, data[:size]}
 }
