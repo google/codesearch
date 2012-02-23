@@ -402,7 +402,7 @@ func (g *Grep) Reader(r io.Reader, name string) {
 	var (
 		buf        = g.buf[:0]
 		needLineno = g.N
-		lineno     = 0
+		lineno     = 1
 		count      = 0
 		prefix     = ""
 		beginText  = true
