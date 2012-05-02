@@ -113,11 +113,25 @@ func Main() {
 		log.Printf("post query identified %d possible files\n", len(post))
 	}
 
+	if fre != nil {
+		fnames := make([]uint32, 0, len(post))
+
+		for _, fileid := range post {
+			name := ix.Name(fileid)
+			if fre.MatchString(name, true, true) < 0 {
+				continue
+			}
+			fnames = append(fnames, fileid)
+		}
+
+		if *verboseFlag {
+			log.Printf("filename regexp matched %d files\n", len(fnames))
+		}
+		post = fnames
+	}
+
 	for _, fileid := range post {
 		name := ix.Name(fileid)
-		if fre != nil && fre.MatchString(name, true, true) < 0 {
-			continue
-		}
 		g.File(name)
 	}
 
