@@ -597,10 +597,20 @@ func concat(x, y regexpInfo) (out regexpInfo) {
 }
 
 // alternate returns the regexpInfo for x|y given x and y.
-func alternate(x, y regexpInfo) regexpInfo {
+func alternate(x, y regexpInfo) (out regexpInfo) {
+	//println("alternate", x.String(), "...", y.String())
+	//defer func() { println("->", out.String()) }()
 	var xy regexpInfo
 	if x.exact.have() && y.exact.have() {
 		xy.exact = x.exact.union(y.exact, false)
+	} else if x.exact.have() {
+		xy.prefix = x.exact.union(y.prefix, false)
+		xy.suffix = x.exact.union(y.suffix, true)
+		x.addExact()
+	} else if y.exact.have() {
+		xy.prefix = x.prefix.union(y.exact, false)
+		xy.suffix = x.suffix.union(y.exact.copy(), true)
+		y.addExact()
 	} else {
 		xy.prefix = x.prefix.union(y.prefix, false)
 		xy.suffix = x.suffix.union(y.suffix, true)
