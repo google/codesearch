@@ -172,10 +172,11 @@ func (m *matcher) stepByte(runq, nextq *sparse.Set, c int, flag syntax.EmptyOp) 
 			}
 			lo := int((i.Arg >> 8) & 0xFF)
 			hi := int(i.Arg & 0xFF)
-			if i.Arg&argFold != 0 && 'a' <= c && c <= 'z' {
-				c += 'A' - 'a'
+			ch := c
+			if i.Arg&argFold != 0 && 'a' <= ch && ch <= 'z' {
+				ch += 'A' - 'a'
 			}
-			if lo <= c && c <= hi {
+			if lo <= ch && ch <= hi {
 				m.addq(nextq, i.Out, flag)
 			}
 		}

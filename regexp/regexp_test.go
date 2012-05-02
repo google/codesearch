@@ -119,6 +119,8 @@ var matchTests = []struct {
 	{`\B`, "xx yy", []int{1}},
 	{`(?im)^[abc]+$`, "abcABC", []int{1}},
 	{`(?im)^[α]+$`, "αΑ", []int{1}},
+	{`[Aa]BC`, "abc", nil},
+	{`[Aa]bc`, "abc", []int{1}},
 
 	// RE2 tests
 	{`[^\S\s]`, "abcd", nil},
