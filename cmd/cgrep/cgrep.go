@@ -38,6 +38,7 @@ func main() {
 	g.AddFlags()
 	g.Stdout = os.Stdout
 	g.Stderr = os.Stderr
+	flag.Usage = usage
 	flag.Parse()
 	args := flag.Args()
 	if len(args) == 0 {
