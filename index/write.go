@@ -233,7 +233,7 @@ func copyFile(dst, src *bufWriter) {
 	dst.flush()
 	_, err := io.Copy(dst.file, src.finish())
 	if err != nil {
-		log.Fatal("copying %s to %s: %v", src.name, dst.name, err)
+		log.Fatalf("copying %s to %s: %v", src.name, dst.name, err)
 	}
 }
 
@@ -241,7 +241,7 @@ func copyFile(dst, src *bufWriter) {
 // It returns the assigned file ID number.
 func (ix *IndexWriter) addName(name string) uint32 {
 	if strings.Contains(name, "\x00") {
-		log.Fatal("%q: file has NUL byte in name", name)
+		log.Fatalf("%q: file has NUL byte in name", name)
 	}
 
 	ix.nameIndex.writeUint32(ix.nameData.offset())
@@ -271,7 +271,7 @@ func (ix *IndexWriter) flushPost() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Fatal("short write writing %s", w.Name())
+		log.Fatalf("short write writing %s", w.Name())
 	}
 
 	ix.post = ix.post[:0]
