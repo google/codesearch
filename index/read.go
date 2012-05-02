@@ -232,6 +232,7 @@ func (r *postReader) init(ix *Index, trigram uint32, restrict []uint32) {
 	r.offset = offset
 	r.fileid = ^uint32(0)
 	r.d = ix.slice(ix.postData+offset+3, -1)
+	r.restrict = restrict
 }
 
 func (r *postReader) max() int {
