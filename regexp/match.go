@@ -428,6 +428,7 @@ func (g *Grep) Reader(r io.Reader, name string) {
 			if m1 < chunkStart {
 				break
 			}
+			g.Match = true
 			if g.L {
 				fmt.Fprintf(g.Stdout, "%s\n", name)
 				return
