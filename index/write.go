@@ -465,7 +465,7 @@ func bufCreate(name string) *bufWriter {
 		err error
 	)
 	if name != "" {
-		f, err = os.Create(name)
+		f, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	} else {
 		f, err = ioutil.TempFile("", "csearch")
 	}
