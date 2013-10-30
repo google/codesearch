@@ -1,10 +1,12 @@
 #!/bin/bash
 
+# This script builds the code search binaries for a variety of OS/architecture combinations.
+
 . ./setup
 
 for i in {5,6,8}{c,g,a,l}
 do
-	gomake -C $GOROOT/src/cmd/$i install
+	go tool dist install cmd/$i
 done
 
 build() {
