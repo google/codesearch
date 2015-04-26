@@ -69,6 +69,7 @@ import (
 	"encoding/binary"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 )
@@ -433,10 +434,9 @@ func File() string {
 		return f
 	}
 	var home string
-	if runtime.GOOS == "windows" {
-		home = os.Getenv("HOMEPATH")
-	} else {
-		home = os.Getenv("HOME")
+	home = os.Getenv("HOME")
+	if runtime.GOOS == "windows" && home == "" {
+		home = os.Getenv("USERPROFILE")
 	}
-	return home + "/.csearchindex"
+	return filepath.Clean(home + "/.csearchindex")
 }
