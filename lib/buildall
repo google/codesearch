@@ -14,7 +14,7 @@ build() {
 	goos=$(echo $1 | sed 's;/.*;;')
 	goarch=$(echo $1 | sed 's;.*/;;')
 	GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 \
-		go install -a code.google.com/p/codesearch/cmd/{cgrep,cindex,csearch}
+		go install -a github.com/google/codesearch/cmd/{cgrep,cindex,csearch}
 	rm -rf codesearch-$version
 	mkdir codesearch-$version
 	mv ~/g/bin/{cgrep,cindex,csearch}* codesearch-$version
