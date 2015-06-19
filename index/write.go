@@ -445,6 +445,7 @@ func (h *postHeap) siftUp(j int) {
 			break
 		}
 		ch[i], ch[j] = ch[j], ch[i]
+		j = i
 	}
 }
 
