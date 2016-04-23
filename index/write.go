@@ -40,6 +40,7 @@ type IndexWriter struct {
 	buf     [8]byte     // scratch buffer
 
 	paths []string
+	excludePaths []string
 
 	nameData   *bufWriter // temp file holding list of names
 	nameLen    uint32     // number of bytes written to nameData
@@ -99,6 +100,11 @@ const (
 // AddPaths adds the given paths to the index's list of paths.
 func (ix *IndexWriter) AddPaths(paths []string) {
 	ix.paths = append(ix.paths, paths...)
+}
+
+// AddExcludePaths adds the given paths to the index's list of paths to exclude.
+func (ix *IndexWriter) AddExcludePaths(paths []string) {
+	ix.excludePaths = append(ix.excludePaths, paths...)
 }
 
 // AddFile adds the file with the given name (opened using os.Open)
@@ -196,7 +202,7 @@ func (ix *IndexWriter) Add(name string, f io.Reader) {
 func (ix *IndexWriter) Flush() {
 	ix.addName("")
 
-	var off [5]uint32
+	var off [6]uint32
 	ix.main.writeString(magic)
 	off[0] = ix.main.offset()
 	for _, p := range ix.paths {
@@ -205,12 +211,19 @@ func (ix *IndexWriter) Flush() {
 	}
 	ix.main.writeString("\x00")
 	off[1] = ix.main.offset()
-	copyFile(ix.main, ix.nameData)
+	for _, p := range ix.excludePaths {
+		log.Printf("write exclude %s", p)
+		ix.main.writeString(p)
+		ix.main.writeString("\x00")
+	}
+	ix.main.writeString("\x00")
 	off[2] = ix.main.offset()
-	ix.mergePost(ix.main)
+	copyFile(ix.main, ix.nameData)
 	off[3] = ix.main.offset()
-	copyFile(ix.main, ix.nameIndex)
+	ix.mergePost(ix.main)
 	off[4] = ix.main.offset()
+	copyFile(ix.main, ix.nameIndex)
+	off[5] = ix.main.offset()
 	copyFile(ix.main, ix.postIndex)
 	for _, v := range off {
 		ix.main.writeUint32(v)
