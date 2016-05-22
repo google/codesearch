@@ -8,14 +8,16 @@ package index
 //
 // An index stored on disk has the format:
 //
-//	"csearch index 1\n"
+//	"csearch index <version>\n"
 //	list of paths
+//	list of excluded paths
 //	list of names
 //	list of posting lists
 //	name index
 //	posting list index
 //	trailer
 //
+// Be sure to bump version in `magic` below if you are changing index layout.
 // The list of paths is a sorted sequence of NUL-terminated file or directory names.
 // The index covers the file trees rooted at those paths.
 // The list ends with an empty name ("\x00").
@@ -58,11 +60,13 @@ package index
 // The trailer has the form:
 //
 //	offset of path list [4]
+//	offset of excluded path list [4]
 //	offset of name list [4]
 //	offset of posting lists [4]
 //	offset of name index [4]
 //	offset of posting list index [4]
 //	"\ncsearch trailr\n"
+
 
 import (
 	"bytes"
@@ -75,8 +79,10 @@ import (
 )
 
 const (
-	magic        = "csearch index 1\n"
+	magic        = "csearch index 2\n"
 	trailerMagic = "\ncsearch trailr\n"
+	postEntrySize = 3 + 4 + 4
+	trailerSize = len(trailerMagic) + 6*4 // six int entries in trailer plus magic
 )
 
 // An Index implements read-only access to a trigram index.
@@ -93,14 +99,16 @@ type Index struct {
 	numPost         int
 }
 
-const postEntrySize = 3 + 4 + 4
-
 func Open(file string) *Index {
 	mm := mmap(file)
-	if len(mm.d) < 4*4+len(trailerMagic) || string(mm.d[len(mm.d)-len(trailerMagic):]) != trailerMagic {
+	if len(mm.d) < trailerSize + len(magic) || string(mm.d[len(mm.d)-len(trailerMagic):]) != trailerMagic {
 		corrupt()
 	}
-	n := uint32(len(mm.d) - len(trailerMagic) - 6*4)
+	realMagic := string(mm.d[0:len(magic)])
+	if realMagic != magic {
+		log.Fatalf("index format mismatch: expected '%s' but '%s'\nremove %s and create anew", magic[:len(magic)-1], realMagic[:len(realMagic) - 1], File())
+	}
+	n := uint32(len(mm.d) - trailerSize)
 	ix := &Index{data: mm}
 	ix.pathData = ix.uint32(n)
 	ix.excludePathData = ix.uint32(n + 4)
