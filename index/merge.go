@@ -33,6 +33,7 @@ package index
 import (
 	"encoding/binary"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -130,6 +131,21 @@ func Merge(dst, src1, src2 string) {
 	}
 	ix3.writeString("\x00")
 
+	// Merged list of exclude paths.
+	excludePathData := ix3.offset()
+	excluded := append(ix1.ExcludePaths(), ix2.ExcludePaths()...)
+	sort.Strings(excluded)
+	last = "\x00"
+	for _, path := range excluded {
+		if path == last {
+			continue
+		}
+		last = path
+		ix3.writeString(path)
+		ix3.writeString("\x00")
+	}
+	ix3.writeString("\x00")
+
 	// Merged list of names.
 	nameData := ix3.offset()
 	nameIndexFile := bufCreate("")
@@ -220,6 +236,7 @@ func Merge(dst, src1, src2 string) {
 	copyFile(ix3, w.postIndexFile)
 
 	ix3.writeUint32(pathData)
+	ix3.writeUint32(excludePathData)
 	ix3.writeUint32(nameData)
 	ix3.writeUint32(postData)
 	ix3.writeUint32(nameIndex)
