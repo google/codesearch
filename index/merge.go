@@ -33,6 +33,7 @@ package index
 import (
 	"encoding/binary"
 	"strings"
+	"log"
 )
 
 // An idrange records that the half-open interval [lo, hi) maps to [new, new+hi-lo).
@@ -230,13 +231,13 @@ func Merge(dst, src1, src2 string) {
 	bufDestroy(w.postIndexFile)
 
 	if err := ix1.Close(); err != nil {
-		panic("merge: inconsistent index")
+		log.Fatalf("merge: ix1 %s", err)
 	}
 	if err := ix2.Close(); err != nil {
-		panic("merge: inconsistent index")
+		log.Fatalf("merge: ix2 %s", err)
 	}
 	if err := ix3.file.Close(); err != nil {
-		panic("merge: inconsistent index")
+		log.Fatalf("merge: ix3 %s", err)
 	}
 }
 
