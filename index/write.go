@@ -101,6 +101,11 @@ func (ix *IndexWriter) AddPaths(paths []string) {
 	ix.paths = append(ix.paths, paths...)
 }
 
+// Close closes the main index file.
+func (ix *IndexWriter) Close() {
+	ix.main.file.Close()
+}
+
 // AddFile adds the file with the given name (opened using os.Open)
 // to the index.  It logs errors using package log.
 func (ix *IndexWriter) AddFile(name string) {
@@ -217,12 +222,16 @@ func (ix *IndexWriter) Flush() {
 	}
 	ix.main.writeString(trailerMagic)
 
-	os.Remove(ix.nameData.name)
+	closeFile(ix.nameData.file)
 	for _, f := range ix.postFile {
-		os.Remove(f.Name())
+		// postFile is already closed by unmmapFile.
+		err := os.Remove(f.Name())
+		if err != nil {
+			log.Printf("%s: %s", f.Name(), err)
+		}
 	}
-	os.Remove(ix.nameIndex.name)
-	os.Remove(ix.postIndex.name)
+	closeFile(ix.nameIndex.file)
+	closeFile(ix.postIndex.file)
 
 	log.Printf("%d data bytes, %d index bytes", ix.totalBytes, ix.main.offset())
 
@@ -234,6 +243,19 @@ func copyFile(dst, src *bufWriter) {
 	_, err := io.Copy(dst.file, src.finish())
 	if err != nil {
 		log.Fatalf("copying %s to %s: %v", src.name, dst.name, err)
+	}
+}
+
+func closeFile(f *os.File) {
+	if f != nil {
+		err := f.Close()
+		if err != nil {
+			log.Printf("%s: %s", f.Name(), err)
+		}
+	}
+	err := os.Remove(f.Name())
+	if err != nil {
+		log.Printf("%s: %s", f.Name(), err)
 	}
 }
 
@@ -286,7 +308,8 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 
 	log.Printf("merge %d files + mem", len(ix.postFile))
 	for _, f := range ix.postFile {
-		h.addFile(f)
+		data := h.addFile(f)
+		defer unmmapFile(data)
 	}
 	sortPost(ix.post)
 	h.addMem(ix.post)
@@ -338,10 +361,12 @@ type postHeap struct {
 	ch []*postChunk
 }
 
-func (h *postHeap) addFile(f *os.File) {
-	data := mmapFile(f).d
+func (h *postHeap) addFile(f *os.File) *mmapData {
+	mmapData := mmapFile(f)
+	data := mmapData.d
 	m := (*[npost]postEntry)(unsafe.Pointer(&data[0]))[:len(data)/8]
 	h.addMem(m)
+	return &mmapData
 }
 
 func (h *postHeap) addMem(x []postEntry) {
@@ -445,6 +470,7 @@ func (h *postHeap) siftUp(j int) {
 			break
 		}
 		ch[i], ch[j] = ch[j], ch[i]
+		j = i
 	}
 }
 
@@ -476,6 +502,17 @@ func bufCreate(name string) *bufWriter {
 		name: f.Name(),
 		buf:  make([]byte, 0, 256<<10),
 		file: f,
+	}
+}
+
+func bufDestroy(bf *bufWriter) {
+	err := bf.file.Close()
+	if err != nil {
+		log.Printf("%s: %s", bf.name, err)
+	}
+	err = os.Remove(bf.name)
+	if err != nil {
+		log.Printf("%s: %s", bf.name, err)
 	}
 }
 

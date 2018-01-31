@@ -26,13 +26,12 @@ package index
 // Now merge the posting lists (this is why they begin with the trigram).
 // During the merge, translate the docid numbers to the new C docid space.
 // Also during the merge, write the posting list index to a temporary file as usual.
-// 
+//
 // Copy the name index and posting list index into C's index and write the trailer.
 // Rename C's index onto the new index.
 
 import (
 	"encoding/binary"
-	"os"
 	"strings"
 )
 
@@ -227,8 +226,18 @@ func Merge(dst, src1, src2 string) {
 	ix3.writeString(trailerMagic)
 	ix3.flush()
 
-	os.Remove(nameIndexFile.name)
-	os.Remove(w.postIndexFile.name)
+	bufDestroy(nameIndexFile)
+	bufDestroy(w.postIndexFile)
+
+	if err := ix1.Close(); err != nil {
+		panic("merge: inconsistent index")
+	}
+	if err := ix2.Close(); err != nil {
+		panic("merge: inconsistent index")
+	}
+	if err := ix3.file.Close(); err != nil {
+		panic("merge: inconsistent index")
+	}
 }
 
 type postMapReader struct {
