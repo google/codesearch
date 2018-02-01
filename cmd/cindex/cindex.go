@@ -41,7 +41,7 @@ itself is a useful command to run in a nightly cron job.
 
 The -list flag causes cindex to list the paths it has indexed and exit.
 
-By default cindex adds the named paths to the index but preserves 
+By default cindex adds the named paths to the index but preserves
 information about other paths that might already be indexed
 (the ones printed by cindex -list).  The -reset flag causes cindex to
 delete the existing index before indexing the new paths.
@@ -84,7 +84,10 @@ func main() {
 	}
 
 	if *resetFlag && len(args) == 0 {
-		os.Remove(index.File())
+		err := os.Remove(index.File())
+		if err != nil {
+			log.Printf("3 %s: %s", index.File(), err)
+		}
 		return
 	}
 	if len(args) == 0 {
@@ -122,6 +125,7 @@ func main() {
 	}
 
 	ix := index.Create(file)
+	defer ix.Close()
 	ix.Verbose = *verboseFlag
 	ix.AddPaths(args)
 	for _, arg := range args {
@@ -152,8 +156,14 @@ func main() {
 	if !*resetFlag {
 		log.Printf("merge %s %s", master, file)
 		index.Merge(file+"~", master, file)
-		os.Remove(file)
-		os.Rename(file+"~", master)
+
+		ix.Close()
+		if err := os.Remove(file); err != nil {
+			log.Printf("%s: %s", file, err)
+		}
+		if err := os.Rename(file+"~", master); err != nil {
+			log.Printf("%s: %s", file, err)
+		}
 	}
 	log.Printf("done")
 	return

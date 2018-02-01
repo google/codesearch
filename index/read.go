@@ -95,7 +95,7 @@ type Index struct {
 const postEntrySize = 3 + 4 + 4
 
 func Open(file string) *Index {
-	mm := mmap(file)
+	mm := mmapFileAndOpen(file)
 	if len(mm.d) < 4*4+len(trailerMagic) || string(mm.d[len(mm.d)-len(trailerMagic):]) != trailerMagic {
 		corrupt()
 	}
@@ -127,6 +127,11 @@ func (ix *Index) slice(off uint32, n int) []byte {
 // uint32 returns the uint32 value at the given offset in the index data.
 func (ix *Index) uint32(off uint32) uint32 {
 	return binary.BigEndian.Uint32(ix.slice(off, 4))
+}
+
+// Close closes the data.
+func (ix *Index) Close() error {
+	return unmmapFile(&ix.data)
 }
 
 // uvarint returns the varint value at the given offset in the index data.
@@ -413,12 +418,13 @@ func corrupt() {
 
 // An mmapData is mmap'ed read-only data from a file.
 type mmapData struct {
-	f *os.File
-	d []byte
+	f    *os.File
+	d    []byte // [:file size]
+	dall []byte // [:] hole mapped data, for Linux and BSD
 }
 
 // mmap maps the given file into memory.
-func mmap(file string) mmapData {
+func mmapFileAndOpen(file string) mmapData {
 	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
