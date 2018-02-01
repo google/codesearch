@@ -32,8 +32,8 @@ package index
 
 import (
 	"encoding/binary"
-	"strings"
 	"log"
+	"strings"
 )
 
 // An idrange records that the half-open interval [lo, hi) maps to [new, new+hi-lo).

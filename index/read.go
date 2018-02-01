@@ -418,8 +418,8 @@ func corrupt() {
 
 // An mmapData is mmap'ed read-only data from a file.
 type mmapData struct {
-	f *os.File
-	d []byte // [:file size]
+	f    *os.File
+	d    []byte // [:file size]
 	dall []byte // [:] hole mapped data, for Linux and BSD
 }
 

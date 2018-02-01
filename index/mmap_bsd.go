@@ -39,8 +39,8 @@ func mmapFile(f *os.File) mmapData {
 }
 
 func unmmapFile(m *mmapData) error {
-  if err := syscall.Munmap(m.dall); err != nil {
-    return err
-  }
-  return m.f.Close()
+	if err := syscall.Munmap(m.dall); err != nil {
+		return err
+	}
+	return m.f.Close()
 }
