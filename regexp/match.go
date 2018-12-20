@@ -417,7 +417,10 @@ func (g *Grep) Reader(r io.Reader, name string) {
 		buf = buf[:len(buf)+n]
 		end := len(buf)
 		if err == nil {
-			end = bytes.LastIndex(buf, nl) + 1
+			i := bytes.LastIndex(buf, nl)
+			if i >= 0 {
+				end = i + 1
+			}
 		} else {
 			endText = true
 		}
@@ -442,13 +445,17 @@ func (g *Grep) Reader(r io.Reader, name string) {
 				lineno += countNL(buf[chunkStart:lineStart])
 			}
 			line := buf[lineStart:lineEnd]
+			nl := ""
+			if len(line) == 0 || line[len(line)-1] != '\n' {
+				nl = "\n"
+			}
 			switch {
 			case g.C:
 				count++
 			case g.N:
-				fmt.Fprintf(g.Stdout, "%s%d:%s", prefix, lineno, line)
+				fmt.Fprintf(g.Stdout, "%s%d:%s%s", prefix, lineno, line, nl)
 			default:
-				fmt.Fprintf(g.Stdout, "%s%s", prefix, line)
+				fmt.Fprintf(g.Stdout, "%s%s%s", prefix, line, nl)
 			}
 			if needLineno {
 				lineno++
