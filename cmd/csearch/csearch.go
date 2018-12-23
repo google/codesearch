@@ -15,7 +15,7 @@ import (
 	"github.com/google/codesearch/regexp"
 )
 
-var usageMessage = `usage: csearch [-c] [-f fileregexp] [-h] [-i] [-l] [-n] regexp
+var usageMessage = `usage: csearch [-c] [-f fileregexp] [-h] [-i] [-l] [-n] regexp [filter for regex]
 
 Csearch behaves like grep over all indexed files, searching for regexp,
 an RE2 (nearly PCRE) regular expression.
@@ -66,7 +66,7 @@ func Main() {
 	flag.Parse()
 	args := flag.Args()
 
-	if len(args) != 1 {
+	if len(args) != 2 {
 		usage()
 	}
 
@@ -129,13 +129,75 @@ func Main() {
 		}
 		post = fnames
 	}
+	if args[1] != "" {
+		matches = g.Match
+		var ixFirst = ix
+		var postFirst = post
+		var gFirst = g
 
-	for _, fileid := range post {
-		name := ix.Name(fileid)
-		g.File(name)
+		pat = "(?m)" + args[1]
+		if *iFlag {
+			pat = "(?i)" + pat
+		}
+		re, err = regexp.Compile(pat)
+		if err != nil {
+			log.Fatal(err)
+		}
+		g.Regexp = re
+		if *fFlag != "" {
+			fre, err = regexp.Compile(*fFlag)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		q = index.RegexpQuery(re.Syntax)
+		if *verboseFlag {
+			log.Printf("query: %s\n", q)
+		}
+
+		ix = index.Open(index.File())
+		ix.Verbose = *verboseFlag
+		if *bruteFlag {
+			post = ix.PostingQuery(&index.Query{Op: index.QAll})
+		} else {
+			post = ix.PostingQuery(q)
+		}
+		if *verboseFlag {
+			log.Printf("post query identified %d possible files\n", len(post))
+		}
+
+		if fre != nil {
+			fnames := make([]uint32, 0, len(post))
+
+			for _, fileid := range post {
+				name := ix.Name(fileid)
+				if fre.MatchString(name, true, true) < 0 {
+					continue
+				}
+				fnames = append(fnames, fileid)
+			}
+
+			if *verboseFlag {
+				log.Printf("filename regexp matched %d files\n", len(fnames))
+			}
+			post = fnames
+		}
+
+		for _, fileid := range post {
+			name := ix.Name(fileid)
+			for _, fileidFirst := range postFirst {
+				nameFirst := ixFirst.Name(fileidFirst)
+				if name == nameFirst {
+					gFirst.File(nameFirst)
+				}
+			}
+		}
+	} else {
+		for _, fileid := range post {
+			name := ix.Name(fileid)
+			g.File(name)
+		}
 	}
-
-	matches = g.Match
 }
 
 func main() {
