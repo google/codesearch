@@ -362,7 +362,8 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 			list[i] = uint32(i)
 		}
 		if filter != nil {
-			ix.filterPostingQuery(filter, list)
+			list = ix.filterPostingQuery(filter, list)
+			return list
 		} else {
 			return list
 		}
