@@ -11,7 +11,7 @@ import (
 	"os"
 	"runtime/pprof"
 
-	"github.com/google/codesearch/index"
+	"github.com/Evengining/codesearch/index"
 	"github.com/google/codesearch/regexp"
 )
 

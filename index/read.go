@@ -334,7 +334,7 @@ func (ix *Index) PostingQuery(q *Query) []uint32 {
 	return ix.postingQuery(q, nil)
 }
 
-func (ix *Index) postingQuery(q *Query, restrict []uint32) (ret []uint32) {
+//func (ix *Index) postingQuery(q *Query, restrict []uint32) (ret []uint32) {
 	var list []uint32
 	switch q.Op {
 	case QNone:
