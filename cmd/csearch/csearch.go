@@ -96,16 +96,16 @@ func Main() {
 			log.Fatal(err)
 		}
 	}
-	fil := "(?m)" + args[1]
+	filter := "(?m)" + args[1]
 	if *iFlag {
-		fil = "(?i)" + fil
+		filter = "(?i)" + filter
 	}
-	fi, err := regexp.Compile(fil)
+	filterRe, err := regexp.Compile(filter)
 	if err != nil {
 		log.Fatal(err)
 	}
 	q := index.RegexpQuery(re.Syntax)
-	filter := index.RegexpQuery(fi.Syntax)
+	filterQuery := index.RegexpQuery(filterRe.Syntax)
 	if *verboseFlag {
 		log.Printf("query: %s\n", q)
 	}
@@ -114,9 +114,9 @@ func Main() {
 	ix.Verbose = *verboseFlag
 	var post []uint32
 	if *bruteFlag {
-		post = ix.PostingQuery(&index.Query{Op: index.QAll}, filter)
+		post = ix.PostingQuery(&index.Query{Op: index.QAll}, filterQuery)
 	} else {
-		post = ix.PostingQuery(q, filter)
+		post = ix.PostingQuery(q, filterQuery)
 	}
 	if *verboseFlag {
 		log.Printf("post query identified %d possible files\n", len(post))
