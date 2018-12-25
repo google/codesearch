@@ -330,25 +330,11 @@ func (ix *Index) postingOr(list []uint32, trigram uint32, restrict []uint32) []u
 	return x
 }
 
-func (ix *Index) PostingQuery(q *Query, filter *Query) []uint32 {
-	return ix.postingQuery(q, filter, nil)
+func (ix *Index) PostingQuery(q *Query) []uint32 {
+	return ix.postingQuery(q, nil)
 }
 
-func (ix *Index) filterPostingQuery(q *Query, list []uint32) (ret []uint32) {
-	var finds = ix.postingQuery(q, nil, nil)
-	var findsIds = make([]uint32, 0, len(finds))
-	for _, id := range finds {
-		for _, listId := range list {
-			if id != listId {
-				continue
-			}
-			findsIds = append(findsIds, id)
-		}
-	}
-	return findsIds
-}
-
-func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret []uint32) {
+func (ix *Index) postingQuery(q *Query, restrict []uint32) (ret []uint32) {
 	var list []uint32
 	switch q.Op {
 	case QNone:
@@ -361,9 +347,7 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 		for i := range list {
 			list[i] = uint32(i)
 		}
-		if filter != nil {
-			list = ix.filterPostingQuery(filter, list)
-		}
+		return list
 	case QAnd:
 		for _, t := range q.Trigram {
 			tri := uint32(t[0])<<16 | uint32(t[1])<<8 | uint32(t[2])
@@ -380,13 +364,10 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 			if list == nil {
 				list = restrict
 			}
-			list = ix.postingQuery(sub, nil, list)
+			list = ix.postingQuery(sub, list)
 			if len(list) == 0 {
 				return nil
 			}
-		}
-		if filter != nil {
-			list = ix.filterPostingQuery(filter, list)
 		}
 	case QOr:
 		for _, t := range q.Trigram {
@@ -398,11 +379,8 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 			}
 		}
 		for _, sub := range q.Sub {
-			list1 := ix.postingQuery(sub, nil, restrict)
+			list1 := ix.postingQuery(sub, restrict)
 			list = mergeOr(list, list1)
-		}
-		if filter != nil {
-			list = ix.filterPostingQuery(filter, list)
 		}
 	}
 	return list
