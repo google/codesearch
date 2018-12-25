@@ -336,16 +336,16 @@ func (ix *Index) PostingQuery(q *Query, filter *Query) []uint32 {
 
 func (ix *Index) filterPostingQuery(q *Query, list []uint32) (ret []uint32) {
 	var finds = ix.postingQuery(q, nil, nil)
-	var ids = make([]uint32, 0, len(finds))
+	var findsIds = make([]uint32, 0, len(finds))
 	for _, id := range finds {
 		for _, listId := range list {
 			if id != listId {
 				continue
 			}
-			ids = append(ids, id)
+			findsIds = append(findsIds, id)
 		}
 	}
-	return ids
+	return findsIds
 }
 
 func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret []uint32) {
@@ -363,9 +363,6 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 		}
 		if filter != nil {
 			list = ix.filterPostingQuery(filter, list)
-			return list
-		} else {
-			return list
 		}
 	case QAnd:
 		for _, t := range q.Trigram {
