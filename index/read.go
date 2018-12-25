@@ -388,6 +388,9 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 				return nil
 			}
 		}
+		if filter != nil {
+			list = ix.filterPostingQuery(filter, list)
+		}
 	case QOr:
 		for _, t := range q.Trigram {
 			tri := uint32(t[0])<<16 | uint32(t[1])<<8 | uint32(t[2])
@@ -400,6 +403,9 @@ func (ix *Index) postingQuery(q *Query, filter *Query, restrict []uint32) (ret [
 		for _, sub := range q.Sub {
 			list1 := ix.postingQuery(sub, nil, restrict)
 			list = mergeOr(list, list1)
+		}
+		if filter != nil {
+			list = ix.filterPostingQuery(filter, list)
 		}
 	}
 	return list
