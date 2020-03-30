@@ -48,8 +48,9 @@ type IndexWriter struct {
 	totalBytes int64
 
 	post      []postEntry // list of (trigram, file#) pairs
-	postFile  []*os.File  // flushed post entries
-	postIndex *bufWriter  // temp file holding posting list index
+	postFile  *bufWriter  // flushed post entries
+	postEnds  []int
+	postIndex *bufWriter // temp file holding posting list index
 
 	inbuf []byte     // input buffer
 	main  *bufWriter // main index file
@@ -63,6 +64,7 @@ func Create(file string) *IndexWriter {
 		trigram:   sparse.NewSet(1 << 24),
 		nameData:  bufCreate(""),
 		nameIndex: bufCreate(""),
+		postFile:  bufCreate(""),
 		postIndex: bufCreate(""),
 		main:      bufCreate(file),
 		post:      make([]postEntry, 0, npost),
@@ -233,9 +235,7 @@ func (ix *IndexWriter) Flush() {
 	}
 
 	os.Remove(ix.nameData.name)
-	for _, f := range ix.postFile {
-		os.Remove(f.Name())
-	}
+	os.Remove(ix.postFile.name)
 	os.Remove(ix.nameIndex.name)
 	os.Remove(ix.postIndex.name)
 
@@ -270,28 +270,22 @@ func (ix *IndexWriter) addName(name string) int {
 // flushPost writes ix.post to a new temporary file and
 // clears the slice.
 func (ix *IndexWriter) flushPost() {
-	w, err := ioutil.TempFile("", "csearch-index")
-	if err != nil {
-		log.Fatal(err)
-	}
 	if ix.Verbose {
-		log.Printf("flush %d entries to %s", len(ix.post), w.Name())
+		log.Printf("flush %d entries to %v", len(ix.post), ix.postFile.name)
 	}
 	sortPost(ix.post)
 
 	// Write the raw ix.post array to disk as is.
 	// This process is the one reading it back in, so byte order is not a concern.
+	out := ix.postFile
 	data := (*[npost * 8]byte)(unsafe.Pointer(&ix.post[0]))[:len(ix.post)*8]
-	if n, err := w.Write(data); err != nil || n < len(data) {
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Fatalf("short write writing %s", w.Name())
-	}
-
+	start := out.offset()
+	out.write(data)
 	ix.post = ix.post[:0]
-	w.Seek(0, 0)
-	ix.postFile = append(ix.postFile, w)
+	end := out.offset()
+
+	log.Printf("flushed %d bytes to disk; total %d", end-start, end)
+	ix.postEnds = append(ix.postEnds, end)
 }
 
 // mergePost reads the flushed index entries and merges them
@@ -299,10 +293,8 @@ func (ix *IndexWriter) flushPost() {
 func (ix *IndexWriter) mergePost(out *bufWriter) {
 	var h postHeap
 
-	log.Printf("merge %d files + mem", len(ix.postFile))
-	for _, f := range ix.postFile {
-		h.addFile(f)
-	}
+	log.Printf("merge %d files + mem", len(ix.postEnds))
+	h.addFile(ix.postFile, ix.postEnds)
 	sortPost(ix.post)
 	h.addMem(ix.post)
 
@@ -353,10 +345,14 @@ type postHeap struct {
 	ch []*postChunk
 }
 
-func (h *postHeap) addFile(f *os.File) {
-	data := mmapFile(f).d
-	m := (*[npost]postEntry)(unsafe.Pointer(&data[0]))[:len(data)/8]
-	h.addMem(m)
+func (h *postHeap) addFile(w *bufWriter, ends []int) {
+	w.flush()
+	data := mmapFile(w.file).d
+	start := 0
+	for _, end := range ends {
+		h.addMem((*[npost]postEntry)(unsafe.Pointer(&data[start]))[:(end-start)/8])
+		start = end
+	}
 }
 
 func (h *postHeap) addMem(x []postEntry) {

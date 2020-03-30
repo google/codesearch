@@ -191,8 +191,11 @@ func buildFlushIndex(out string, paths []string, doFlush bool, fileData map[stri
 		files = append(files, name)
 	}
 	sort.Strings(files)
-	for _, name := range files {
+	for i, name := range files {
 		ix.Add(name, strings.NewReader(fileData[name]))
+		if doFlush && i == len(files)/2 {
+			ix.flushPost()
+		}
 	}
 	if doFlush {
 		ix.flushPost()
