@@ -177,7 +177,7 @@ func Merge(dst, src1, src2 string) {
 	var w postDataWriter
 	r1.init(ix1, map1)
 	r2.init(ix2, map2)
-	w.init(ix3)
+	w.init(ix3, true)
 	for {
 		if r1.trigram < r2.trigram {
 			w.trigram(r1.trigram)
@@ -321,10 +321,13 @@ type postDataWriter struct {
 	t             uint32
 }
 
-func (w *postDataWriter) init(out *bufWriter) {
+func (w *postDataWriter) init(out *bufWriter, doIndex bool) {
 	w.out = out
-	w.postIndexFile = bufCreate("")
 	w.base = out.offset()
+	w.postIndexFile = nil
+	if doIndex {
+		w.postIndexFile = bufCreate("")
+	}
 }
 
 func (w *postDataWriter) trigram(t uint32) {
@@ -348,7 +351,9 @@ func (w *postDataWriter) endTrigram() {
 		return
 	}
 	w.out.writeUvarint(0)
-	w.postIndexFile.writeTrigram(w.t)
-	w.postIndexFile.writeUint(w.count)
-	w.postIndexFile.writeUint(w.offset - w.base)
+	if w.postIndexFile != nil {
+		w.postIndexFile.writeTrigram(w.t)
+		w.postIndexFile.writeUint(w.count)
+		w.postIndexFile.writeUint(w.offset - w.base)
+	}
 }

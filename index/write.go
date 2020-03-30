@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"unsafe"
 
 	"github.com/google/codesearch/sparse"
 )
@@ -275,14 +274,25 @@ func (ix *IndexWriter) flushPost() {
 	}
 	sortPost(ix.post)
 
-	// Write the raw ix.post array to disk as is.
-	// This process is the one reading it back in, so byte order is not a concern.
-	out := ix.postFile
-	data := (*[npost * 8]byte)(unsafe.Pointer(&ix.post[0]))[:len(ix.post)*8]
-	start := out.offset()
-	out.write(data)
+	start := ix.postFile.offset()
+	var w postDataWriter
+	w.init(ix.postFile, false)
+	trigram := invalidTrigram
+	for _, p := range ix.post {
+		if t := p.trigram(); t != trigram {
+			if trigram != invalidTrigram {
+				w.endTrigram()
+			}
+			w.trigram(t)
+			trigram = t
+		}
+		w.fileid(p.fileid())
+	}
+	if trigram != invalidTrigram {
+		w.endTrigram()
+	}
 	ix.post = ix.post[:0]
-	end := out.offset()
+	end := ix.postFile.offset()
 
 	log.Printf("flushed %d bytes to disk; total %d", end-start, end)
 	ix.postEnds = append(ix.postEnds, end)
@@ -334,8 +344,8 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 // A postChunk represents a chunk of post entries flushed to disk or
 // still in memory.
 type postChunk struct {
-	e postEntry   // next entry
-	m []postEntry // remaining entries after e
+	e    postEntry                // first entry
+	next func() (postEntry, bool) // reader for entries after first
 }
 
 const postBuf = 4096
@@ -350,26 +360,33 @@ func (h *postHeap) addFile(w *bufWriter, ends []int) {
 	data := mmapFile(w.file).d
 	start := 0
 	for _, end := range ends {
-		h.addMem((*[npost]postEntry)(unsafe.Pointer(&data[start]))[:(end-start)/8])
+		var r allPostReader
+		r.init(data[start:end])
+		h.add(r.next)
 		start = end
 	}
 }
 
 func (h *postHeap) addMem(x []postEntry) {
-	h.add(&postChunk{m: x})
+	h.add(func() (postEntry, bool) {
+		if len(x) == 0 {
+			return postEntry(0), false
+		}
+		e := x[0]
+		x = x[1:]
+		return e, true
+	})
 }
 
 // step reads the next entry from ch and saves it in ch.e.
 // It returns false if ch is over.
 func (h *postHeap) step(ch *postChunk) bool {
 	old := ch.e
-	m := ch.m
-	if len(m) == 0 {
+	e, ok := ch.next()
+	if !ok {
 		return false
 	}
-	ch.e = postEntry(m[0])
-	m = m[1:]
-	ch.m = m
+	ch.e = e
 	if old >= ch.e {
 		panic("bad sort")
 	}
@@ -378,12 +395,12 @@ func (h *postHeap) step(ch *postChunk) bool {
 
 // add adds the chunk to the postHeap.
 // All adds must be called before the first call to next.
-func (h *postHeap) add(ch *postChunk) {
-	if len(ch.m) > 0 {
-		ch.e = ch.m[0]
-		ch.m = ch.m[1:]
-		h.push(ch)
+func (h *postHeap) add(next func() (postEntry, bool)) {
+	e, ok := next()
+	if !ok {
+		return
 	}
+	h.push(&postChunk{e, next})
 }
 
 // empty reports whether the postHeap is empty.
@@ -399,12 +416,11 @@ func (h *postHeap) next() postEntry {
 	}
 	ch := h.ch[0]
 	e := ch.e
-	m := ch.m
-	if len(m) == 0 {
+	e1, ok := ch.next()
+	if !ok {
 		h.pop()
 	} else {
-		ch.e = m[0]
-		ch.m = m[1:]
+		ch.e = e1
 		h.siftDown(0)
 	}
 	return e

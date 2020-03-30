@@ -376,6 +376,44 @@ func (r *postReader) next() bool {
 	return false
 }
 
+type allPostReader struct {
+	data    []byte
+	trigram uint32
+	fileid  int
+}
+
+func (r *allPostReader) init(data []byte) {
+	r.data = data
+	r.trigram = invalidTrigram
+}
+
+func (r *allPostReader) next() (postEntry, bool) {
+	d := r.data
+	for {
+		if r.trigram == invalidTrigram {
+			if len(d) == 0 {
+				return 0, false
+			}
+			if len(d) < 3 {
+				log.Fatalf("internal error: invalid temporary file")
+			}
+			r.trigram = uint32(d[0])<<16 | uint32(d[1])<<8 | uint32(d[2])
+			d = d[3:]
+			r.fileid = -1
+		}
+
+		delta, n := binary.Uvarint(d)
+		d = d[n:]
+		if delta == 0 {
+			r.trigram = invalidTrigram
+			continue
+		}
+		r.fileid += int(delta)
+		r.data = d
+		return makePostEntry(r.trigram, r.fileid), true
+	}
+}
+
 func (ix *Index) PostingList(trigram uint32) []int {
 	return ix.postingList(trigram, nil)
 }
