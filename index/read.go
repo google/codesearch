@@ -143,6 +143,7 @@ const (
 // An Index implements read-only access to a trigram index.
 type Index struct {
 	Verbose       bool
+	name          string
 	data          mmapData
 	is64          bool
 	postEntrySize int
@@ -162,21 +163,21 @@ const (
 
 func Open(file string) *Index {
 	mm := mmap(file)
-	ix := &Index{data: mm}
+	ix := &Index{name: file, data: mm}
 	if len(mm.d) < len(trailerMagic32) {
-		corrupt()
+		ix.corrupt()
 	}
 
 	magic := string(mm.d[len(mm.d)-len(trailerMagic32):])
 	var n int
 	switch magic {
 	default:
-		corrupt()
+		ix.corrupt()
 
 	case trailerMagic32:
 		n = len(mm.d) - len(trailerMagic32) - 5*4
 		if n < 0 {
-			corrupt()
+			ix.corrupt()
 		}
 		ix.postEntrySize = postEntrySize32
 		ix.pathData = ix.uint32(n)
@@ -190,7 +191,7 @@ func Open(file string) *Index {
 		ix.is64 = true
 		n = len(mm.d) - len(trailerMagic64) - 5*8
 		if n < 0 {
-			corrupt()
+			ix.corrupt()
 		}
 		ix.postEntrySize = postEntrySize64
 		ix.pathData = ix.uint64(n)
@@ -209,13 +210,13 @@ func Open(file string) *Index {
 // If n >= 0, the slice must have length at least n and is truncated to length n.
 func (ix *Index) slice(off int, n int) []byte {
 	if off < 0 {
-		corrupt()
+		ix.corrupt()
 	}
 	if n < 0 {
 		return ix.data.d[off:]
 	}
 	if off+n < off || off+n > len(ix.data.d) {
-		corrupt()
+		ix.corrupt()
 	}
 	return ix.data.d[off : off+n]
 }
@@ -224,7 +225,7 @@ func (ix *Index) slice(off int, n int) []byte {
 func (ix *Index) uint32(off int) int {
 	v := binary.BigEndian.Uint32(ix.slice(off, 4))
 	if int(v) < 0 {
-		corrupt()
+		ix.corrupt()
 	}
 	return int(v)
 }
@@ -233,7 +234,7 @@ func (ix *Index) uint32(off int) int {
 func (ix *Index) uint64(off int) int {
 	v := binary.BigEndian.Uint64(ix.slice(off, 8))
 	if int(v) < 0 || uint64(int(v)) != v {
-		corrupt()
+		ix.corrupt()
 	}
 	return int(v)
 }
@@ -268,7 +269,7 @@ func (ix *Index) str(off int) []byte {
 	str := ix.slice(off, -1)
 	i := bytes.IndexByte(str, '\x00')
 	if i < 0 {
-		corrupt()
+		ix.corrupt()
 	}
 	return str[:i]
 }
@@ -290,7 +291,7 @@ func (ix *Index) listAt(off int) (trigram uint32, count, offset int) {
 		offset = int(binary.BigEndian.Uint32(d[3+4:]))
 	}
 	if count < 0 || offset < 0 {
-		corrupt()
+		ix.corrupt()
 	}
 	return
 }
@@ -325,8 +326,8 @@ type postReader struct {
 	count    int
 	offset   int
 	fileid   int
-	d        []byte
 	restrict []int
+	delta    deltaReader
 }
 
 func (r *postReader) init(ix *Index, trigram uint32, restrict []int) {
@@ -338,7 +339,7 @@ func (r *postReader) init(ix *Index, trigram uint32, restrict []int) {
 	r.count = count
 	r.offset = offset
 	r.fileid = -1
-	r.d = ix.slice(ix.postData+offset+3, -1)
+	r.delta.init(r.ix, ix.slice(ix.postData+offset+3, -1))
 	r.restrict = restrict
 }
 
@@ -349,12 +350,10 @@ func (r *postReader) max() int {
 func (r *postReader) next() bool {
 	for r.count > 0 {
 		r.count--
-		delta64, n := binary.Uvarint(r.d)
-		delta := int(delta64)
-		if n <= 0 || delta <= 0 || uint64(delta) != delta64 {
-			corrupt()
+		delta := r.delta.next()
+		if delta <= 0 {
+			r.ix.corrupt()
 		}
-		r.d = r.d[n:]
 		r.fileid += delta
 		if r.restrict != nil {
 			i := 0
@@ -369,28 +368,30 @@ func (r *postReader) next() bool {
 		return true
 	}
 	// list should end with terminating 0 delta
-	if r.d != nil && (len(r.d) == 0 || r.d[0] != 0) {
-		corrupt()
+	if r.delta.next() != 0 {
+		r.ix.corrupt()
 	}
+	r.delta.clearBits()
 	r.fileid = -1
 	return false
 }
 
 type allPostReader struct {
-	data    []byte
 	trigram uint32
 	fileid  int
+	is64    bool
+	delta   deltaReader
 }
 
-func (r *allPostReader) init(data []byte) {
-	r.data = data
+func (r *allPostReader) init(ix *Index, data []byte) {
+	r.delta.init(ix, data)
 	r.trigram = invalidTrigram
 }
 
 func (r *allPostReader) next() (postEntry, bool) {
-	d := r.data
 	for {
 		if r.trigram == invalidTrigram {
+			d := r.delta.d
 			if len(d) == 0 {
 				return 0, false
 			}
@@ -400,16 +401,15 @@ func (r *allPostReader) next() (postEntry, bool) {
 			r.trigram = uint32(d[0])<<16 | uint32(d[1])<<8 | uint32(d[2])
 			d = d[3:]
 			r.fileid = -1
+			r.delta.d = d
 		}
-
-		delta, n := binary.Uvarint(d)
-		d = d[n:]
+		delta := r.delta.next()
 		if delta == 0 {
+			r.delta.clearBits()
 			r.trigram = invalidTrigram
 			continue
 		}
-		r.fileid += int(delta)
-		r.data = d
+		r.fileid += delta
 		return makePostEntry(r.trigram, r.fileid), true
 	}
 }
@@ -551,9 +551,8 @@ func mergeOr(l1, l2 []int) []int {
 	return l
 }
 
-func corrupt() {
-	// TODO ix.corrupt with right file name
-	log.Fatal("corrupt index: remove " + File())
+func (ix *Index) corrupt() {
+	log.Fatal("corrupt index: remove " + ix.name)
 }
 
 // An mmapData is mmap'ed read-only data from a file.

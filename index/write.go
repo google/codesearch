@@ -67,7 +67,7 @@ func Create(file string) *IndexWriter {
 		postIndex: bufCreate(""),
 		main:      bufCreate(file),
 		post:      make([]postEntry, 0, npost),
-		inbuf:     make([]byte, 16384),
+		inbuf:     make([]byte, 1<<20),
 	}
 }
 
@@ -224,6 +224,17 @@ func (ix *IndexWriter) Flush() {
 	copyFile(ix.main, ix.nameIndex)
 	off[4] = ix.main.offset()
 	copyFile(ix.main, ix.postIndex)
+
+	// not required for reader, but nice for debugging:
+	// align trailer to end at 16-byte boundary.
+	if !writeOldIndex {
+		pos := ix.main.offset()
+		for pos%16 != 8 {
+			ix.main.writeByte(0)
+			pos++
+		}
+	}
+
 	for _, v := range off {
 		ix.main.writeUint(v)
 	}
@@ -245,10 +256,11 @@ func (ix *IndexWriter) Flush() {
 
 func copyFile(dst, src *bufWriter) {
 	dst.flush()
-	_, err := io.Copy(dst.file, src.finish())
+	n, err := io.Copy(dst.file, src.finish())
 	if err != nil {
 		log.Fatalf("copying %s to %s: %v", src.name, dst.name, err)
 	}
+	dst.fileOff += n
 }
 
 // addName adds the file with the given name to the index.
@@ -311,6 +323,8 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 	npost := 0
 	e := h.next()
 	offset0 := out.offset()
+	var delta deltaWriter
+	delta.init(out)
 	for {
 		npost++
 		offset := out.offset() - offset0
@@ -324,11 +338,12 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 		nfile := 0
 		out.write(ix.buf[:3])
 		for ; e.trigram() == trigram && trigram != invalidTrigram; e = h.next() {
-			out.writeUvarint(e.fileid() - fileid)
+			delta.write(e.fileid() - fileid)
 			fileid = e.fileid()
 			nfile++
 		}
-		out.writeUvarint(0)
+		delta.write(0)
+		delta.flush()
 
 		// index entry
 		ix.postIndex.write(ix.buf[:3])
@@ -361,7 +376,7 @@ func (h *postHeap) addFile(w *bufWriter, ends []int) {
 	start := 0
 	for _, end := range ends {
 		var r allPostReader
-		r.init(data[start:end])
+		r.init(&Index{is64: !writeOldIndex, name: w.name}, data[start:end])
 		h.add(r.next)
 		start = end
 	}
@@ -478,10 +493,11 @@ func (h *postHeap) siftUp(j int) {
 
 // A bufWriter is a convenience wrapper: a closeable bufio.Writer.
 type bufWriter struct {
-	name string
-	file *os.File
-	buf  []byte
-	tmp  [8]byte
+	name    string
+	file    *os.File
+	fileOff int64
+	buf     []byte
+	tmp     [8]byte
 }
 
 // bufCreate creates a new file with the given name and returns a
@@ -515,6 +531,7 @@ func (b *bufWriter) write(x []byte) {
 			if _, err := b.file.Write(x); err != nil {
 				log.Fatalf("writing %s: %v", b.name, err)
 			}
+			b.fileOff += int64(len(x))
 			return
 		}
 	}
@@ -536,6 +553,7 @@ func (b *bufWriter) writeString(s string) {
 			if _, err := b.file.WriteString(s); err != nil {
 				log.Fatalf("writing %s: %v", b.name, err)
 			}
+			b.fileOff += int64(len(s))
 			return
 		}
 	}
@@ -544,8 +562,7 @@ func (b *bufWriter) writeString(s string) {
 
 // offset returns the current write offset.
 func (b *bufWriter) offset() int {
-	off, _ := b.file.Seek(0, 1)
-	off += int64(len(b.buf))
+	off := b.fileOff + int64(len(b.buf))
 	if int64(int(off)) != off {
 		log.Fatalf("index is larger than 2GB on 32-bit system")
 	}
@@ -560,6 +577,7 @@ func (b *bufWriter) flush() {
 	if err != nil {
 		log.Fatalf("writing %s: %v", b.name, err)
 	}
+	b.fileOff += int64(len(b.buf))
 	b.buf = b.buf[:0]
 }
 
@@ -604,27 +622,6 @@ func (b *bufWriter) writeUint64(x int) {
 		b.flush()
 	}
 	b.buf = append(b.buf, byte(x>>56), byte(x>>48), byte(x>>40), byte(x>>32), byte(x>>24), byte(x>>16), byte(x>>8), byte(x))
-}
-
-func (b *bufWriter) writeUvarint(xi int) {
-	if cap(b.buf)-len(b.buf) < 5 {
-		b.flush()
-	}
-	x := int64(xi)
-	switch {
-	case x < 1<<7:
-		b.buf = append(b.buf, byte(x))
-	case x < 1<<14:
-		b.buf = append(b.buf, byte(x|0x80), byte(x>>7))
-	case x < 1<<21:
-		b.buf = append(b.buf, byte(x|0x80), byte(x>>7|0x80), byte(x>>14))
-	case x < 1<<28:
-		b.buf = append(b.buf, byte(x|0x80), byte(x>>7|0x80), byte(x>>14|0x80), byte(x>>21))
-	case x < 1<<35:
-		b.buf = append(b.buf, byte(x|0x80), byte(x>>7|0x80), byte(x>>14|0x80), byte(x>>21|0x80), byte(x>>28))
-	default:
-		log.Fatalf("index is larger than 2GB on 32-bit system")
-	}
 }
 
 // validUTF8 reports whether the byte pair can appear in a

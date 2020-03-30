@@ -31,7 +31,6 @@ package index
 // Rename C's index onto the new index.
 
 import (
-	"encoding/binary"
 	"os"
 	"strings"
 )
@@ -248,10 +247,10 @@ type postMapReader struct {
 	trigram uint32
 	count   int
 	offset  int
-	d       []byte
 	oldid   int
 	fileid  int
 	i       int
+	delta   deltaReader
 }
 
 func (r *postMapReader) init(ix *Index, idmap []idrange) {
@@ -278,7 +277,7 @@ func (r *postMapReader) load() {
 		r.fileid = -1
 		return
 	}
-	r.d = r.ix.slice(r.ix.postData+r.offset+3, -1)
+	r.delta.init(r.ix, r.ix.slice(r.ix.postData+r.offset+3, -1))
 	r.oldid = -1
 	r.i = 0
 }
@@ -286,12 +285,10 @@ func (r *postMapReader) load() {
 func (r *postMapReader) nextId() bool {
 	for r.count > 0 {
 		r.count--
-		delta64, n := binary.Uvarint(r.d)
-		delta := int(delta64)
-		if n <= 0 || delta == 0 || delta < 0 || uint64(delta) != delta64 {
-			corrupt()
+		delta := r.delta.next()
+		if delta <= 0 {
+			r.ix.corrupt()
 		}
-		r.d = r.d[n:]
 		r.oldid += delta
 		for r.i < len(r.idmap) && r.idmap[r.i].hi <= r.oldid {
 			r.i++
@@ -314,17 +311,19 @@ func (r *postMapReader) nextId() bool {
 type postDataWriter struct {
 	out           *bufWriter
 	postIndexFile *bufWriter
-	buf           [10]byte
 	base          int
-	count, offset int
+	count         int
+	offset        int
 	last          int
 	t             uint32
+	delta         deltaWriter
 }
 
 func (w *postDataWriter) init(out *bufWriter, doIndex bool) {
 	w.out = out
 	w.base = out.offset()
 	w.postIndexFile = nil
+	w.delta.init(out)
 	if doIndex {
 		w.postIndexFile = bufCreate("")
 	}
@@ -341,7 +340,7 @@ func (w *postDataWriter) fileid(id int) {
 	if w.count == 0 {
 		w.out.writeTrigram(w.t)
 	}
-	w.out.writeUvarint(id - w.last)
+	w.delta.write(id - w.last)
 	w.last = id
 	w.count++
 }
@@ -350,7 +349,8 @@ func (w *postDataWriter) endTrigram() {
 	if w.count == 0 {
 		return
 	}
-	w.out.writeUvarint(0)
+	w.delta.write(0)
+	w.delta.flush()
 	if w.postIndexFile != nil {
 		w.postIndexFile.writeTrigram(w.t)
 		w.postIndexFile.writeUint(w.count)
