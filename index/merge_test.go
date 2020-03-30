@@ -49,7 +49,9 @@ func TestMerge(t *testing.T) {
 	out2 := f2.Name()
 	out3 := f3.Name()
 
+	writeOldIndex = true
 	buildIndex(out1, mergePaths1, mergeFiles1)
+	writeOldIndex = false
 	buildIndex(out2, mergePaths2, mergeFiles2)
 
 	Merge(out3, out1, out2)

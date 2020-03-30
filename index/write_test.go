@@ -6,6 +6,7 @@ package index
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -22,7 +23,7 @@ var trivialFiles = map[string]string{
 	"file5":    "\nxyzw\n",
 }
 
-var trivialIndex = join(
+var trivialIndex32 = join(
 	// header
 	"csearch index 1\n",
 
@@ -85,6 +86,69 @@ var trivialIndex = join(
 	"\ncsearch trailr\n",
 )
 
+var trivialIndex64 = join(
+	// header
+	"csearch index 1\n",
+
+	// list of paths
+	"\x00",
+
+	// list of names
+	"afile4\x00",
+	"f0\x00",
+	"file1\x00",
+	"file3\x00",
+	"file5\x00",
+	"thefile2\x00",
+	"\x00",
+
+	// list of posting lists
+	"\na\n", fileList(2), // file1
+	"\nab", fileList(3, 5), // file3, thefile2
+	"\nda", fileList(0), // afile4
+	"\nxy", fileList(4), // file5
+	"ab\n", fileList(5), // thefile2
+	"abc", fileList(0, 3), // afile4, file3
+	"bc\n", fileList(0, 3), // afile4, file3
+	"dab", fileList(0), // afile4
+	"xyz", fileList(4), // file5
+	"yzw", fileList(4), // file5
+	"zw\n", fileList(4), // file5
+	"\xff\xff\xff", fileList(),
+
+	// name index
+	u64(0),
+	u64(6+1),
+	u64(6+1+2+1),
+	u64(6+1+2+1+5+1),
+	u64(6+1+2+1+5+1+5+1),
+	u64(6+1+2+1+5+1+5+1+5+1),
+	u64(6+1+2+1+5+1+5+1+5+1+8+1),
+
+	// posting list index,
+	"\na\n", u64(1), u64(0),
+	"\nab", u64(2), u64(5),
+	"\nda", u64(1), u64(5+6),
+	"\nxy", u64(1), u64(5+6+5),
+	"ab\n", u64(1), u64(5+6+5+5),
+	"abc", u64(2), u64(5+6+5+5+5),
+	"bc\n", u64(2), u64(5+6+5+5+5+6),
+	"dab", u64(1), u64(5+6+5+5+5+6+6),
+	"xyz", u64(1), u64(5+6+5+5+5+6+6+5),
+	"yzw", u64(1), u64(5+6+5+5+5+6+6+5+5),
+	"zw\n", u64(1), u64(5+6+5+5+5+6+6+5+5+5),
+	"\xff\xff\xff", u64(0), u64(5+6+5+5+5+6+6+5+5+5+5),
+
+	// trailer
+	u64(16),
+	u64(16+1),
+	u64(16+1+38),
+	u64(16+1+38+62),
+	u64(16+1+38+62+56),
+
+	"\ncsearch trlr64\n",
+)
+
 func join(s ...string) string {
 	return strings.Join(s, "")
 }
@@ -96,6 +160,10 @@ func u32(x uint32) string {
 	buf[2] = byte(x >> 8)
 	buf[3] = byte(x)
 	return string(buf[:])
+}
+
+func u64(x uint64) string {
+	return u32(uint32(x>>32)) + u32(uint32(x))
 }
 
 func fileList(list ...uint32) string {
@@ -137,22 +205,37 @@ func buildIndex(name string, paths []string, fileData map[string]string) {
 }
 
 func testTrivialWrite(t *testing.T, doFlush bool) {
-	f, _ := ioutil.TempFile("", "index-test")
-	defer os.Remove(f.Name())
-	out := f.Name()
-	buildFlushIndex(out, nil, doFlush, trivialFiles)
+	old := writeOldIndex
+	defer func() {
+		writeOldIndex = old
+	}()
 
-	data, err := ioutil.ReadFile(out)
-	if err != nil {
-		t.Fatalf("reading _test/index.triv: %v", err)
-	}
-	want := []byte(trivialIndex)
-	if !bytes.Equal(data, want) {
-		i := 0
-		for i < len(data) && i < len(want) && data[i] == want[i] {
-			i++
-		}
-		t.Fatalf("wrong index:\nhave: %q %q\nwant: %q %q", data[:i], data[i:], want[:i], want[i:])
+	for size := 32; size <= 64; size += 32 {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			writeOldIndex = size == 32
+			f, _ := ioutil.TempFile("", "index-test")
+			defer os.Remove(f.Name())
+			out := f.Name()
+			buildFlushIndex(out, nil, doFlush, trivialFiles)
+
+			data, err := ioutil.ReadFile(out)
+			if err != nil {
+				t.Fatalf("reading _test/index.triv: %v", err)
+			}
+			var want []byte
+			if size == 32 {
+				want = []byte(trivialIndex32)
+			} else {
+				want = []byte(trivialIndex64)
+			}
+			if !bytes.Equal(data, want) {
+				i := 0
+				for i < len(data) && i < len(want) && data[i] == want[i] {
+					i++
+				}
+				t.Fatalf("wrong index:\nhave: %q %q\nwant: %q %q", data[:i], data[i:], want[:i], want[i:])
+			}
+		})
 	}
 }
 

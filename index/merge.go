@@ -47,6 +47,8 @@ type postIndex struct {
 	offset int
 }
 
+var writeOldIndex = false
+
 // Merge creates a new index in the file dst that corresponds to merging
 // the two indices src1 and src2.  If both src1 and src2 claim responsibility
 // for a path, src2 is assumed to be newer and is given preference.
@@ -140,7 +142,7 @@ func Merge(dst, src1, src2 string) {
 		if mi1 < len(map1) && map1[mi1].new == new {
 			for i := map1[mi1].lo; i < map1[mi1].hi; i++ {
 				name := ix1.Name(i)
-				nameIndexFile.writeUint32(ix3.offset() - nameData)
+				nameIndexFile.writeUint(ix3.offset() - nameData)
 				ix3.writeString(name)
 				ix3.writeString("\x00")
 				new++
@@ -149,7 +151,7 @@ func Merge(dst, src1, src2 string) {
 		} else if mi2 < len(map2) && map2[mi2].new == new {
 			for i := map2[mi2].lo; i < map2[mi2].hi; i++ {
 				name := ix2.Name(i)
-				nameIndexFile.writeUint32(ix3.offset() - nameData)
+				nameIndexFile.writeUint(ix3.offset() - nameData)
 				ix3.writeString(name)
 				ix3.writeString("\x00")
 				new++
@@ -159,10 +161,14 @@ func Merge(dst, src1, src2 string) {
 			panic("merge: inconsistent index")
 		}
 	}
-	if new*4 != nameIndexFile.offset() {
+	scale := 8
+	if writeOldIndex {
+		scale = 4
+	}
+	if new*scale != nameIndexFile.offset() {
 		panic("merge: inconsistent index")
 	}
-	nameIndexFile.writeUint32(ix3.offset())
+	nameIndexFile.writeUint(ix3.offset())
 
 	// Merged list of posting lists.
 	postData := ix3.offset()
@@ -219,12 +225,16 @@ func Merge(dst, src1, src2 string) {
 	postIndex := ix3.offset()
 	copyFile(ix3, w.postIndexFile)
 
-	ix3.writeUint32(pathData)
-	ix3.writeUint32(nameData)
-	ix3.writeUint32(postData)
-	ix3.writeUint32(nameIndex)
-	ix3.writeUint32(postIndex)
-	ix3.writeString(trailerMagic)
+	ix3.writeUint(pathData)
+	ix3.writeUint(nameData)
+	ix3.writeUint(postData)
+	ix3.writeUint(nameIndex)
+	ix3.writeUint(postIndex)
+	if writeOldIndex {
+		ix3.writeString(trailerMagic32)
+	} else {
+		ix3.writeString(trailerMagic64)
+	}
 	ix3.flush()
 
 	os.Remove(nameIndexFile.name)
@@ -263,7 +273,7 @@ func (r *postMapReader) load() {
 		r.fileid = -1
 		return
 	}
-	r.trigram, r.count, r.offset = r.ix.listAt(r.triNum * postEntrySize)
+	r.trigram, r.count, r.offset = r.ix.listAt(r.triNum * r.ix.postEntrySize)
 	if r.count == 0 {
 		r.fileid = -1
 		return
@@ -339,6 +349,6 @@ func (w *postDataWriter) endTrigram() {
 	}
 	w.out.writeUvarint(0)
 	w.postIndexFile.writeTrigram(w.t)
-	w.postIndexFile.writeUint32(w.count)
-	w.postIndexFile.writeUint32(w.offset - w.base)
+	w.postIndexFile.writeUint(w.count)
+	w.postIndexFile.writeUint(w.offset - w.base)
 }

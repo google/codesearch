@@ -224,9 +224,13 @@ func (ix *IndexWriter) Flush() {
 	off[4] = ix.main.offset()
 	copyFile(ix.main, ix.postIndex)
 	for _, v := range off {
-		ix.main.writeUint32(v)
+		ix.main.writeUint(v)
 	}
-	ix.main.writeString(trailerMagic)
+	if writeOldIndex {
+		ix.main.writeString(trailerMagic32)
+	} else {
+		ix.main.writeString(trailerMagic64)
+	}
 
 	os.Remove(ix.nameData.name)
 	for _, f := range ix.postFile {
@@ -255,7 +259,7 @@ func (ix *IndexWriter) addName(name string) int {
 		log.Fatalf("%q: file has NUL byte in name", name)
 	}
 
-	ix.nameIndex.writeUint32(ix.nameData.offset())
+	ix.nameIndex.writeUint(ix.nameData.offset())
 	ix.nameData.writeString(name)
 	ix.nameData.writeByte(0)
 	id := ix.numName
@@ -326,8 +330,8 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 
 		// index entry
 		ix.postIndex.write(ix.buf[:3])
-		ix.postIndex.writeUint32(nfile)
-		ix.postIndex.writeUint32(offset)
+		ix.postIndex.writeUint(nfile)
+		ix.postIndex.writeUint(offset)
 
 		if trigram == 1<<24-1 {
 			break
@@ -562,6 +566,14 @@ func (b *bufWriter) writeTrigram(t uint32) {
 	b.buf = append(b.buf, byte(t>>16), byte(t>>8), byte(t))
 }
 
+func (b *bufWriter) writeUint(x int) {
+	if writeOldIndex {
+		b.writeUint32(x)
+	} else {
+		b.writeUint64(x)
+	}
+}
+
 func (b *bufWriter) writeUint32(x int) {
 	if x < 0 || int(uint32(x)) != x {
 		log.Fatalf("index is larger than 2GB on 32-bit system")
@@ -570,6 +582,16 @@ func (b *bufWriter) writeUint32(x int) {
 		b.flush()
 	}
 	b.buf = append(b.buf, byte(x>>24), byte(x>>16), byte(x>>8), byte(x))
+}
+
+func (b *bufWriter) writeUint64(x int) {
+	if x < 0 {
+		log.Fatalf("index is too large")
+	}
+	if cap(b.buf)-len(b.buf) < 4 {
+		b.flush()
+	}
+	b.buf = append(b.buf, byte(x>>56), byte(x>>48), byte(x>>40), byte(x>>32), byte(x>>24), byte(x>>16), byte(x>>8), byte(x))
 }
 
 func (b *bufWriter) writeUvarint(xi int) {
