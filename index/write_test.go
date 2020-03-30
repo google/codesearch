@@ -173,7 +173,7 @@ func TestHeap(t *testing.T) {
 	if len(h.ch) != len(es) {
 		t.Fatalf("wrong heap size: %d, want %d", len(h.ch), len(es))
 	}
-	for a, b := h.next(), h.next(); b.trigram() != (1<<24 - 1); a, b = b, h.next() {
+	for a, b := h.next(), h.next(); b.trigram() != invalidTrigram; a, b = b, h.next() {
 		if a > b {
 			t.Fatalf("%d should <= %d", a, b)
 		}

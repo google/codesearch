@@ -21,7 +21,7 @@ Csearch behaves like grep over all indexed files, searching for regexp,
 an RE2 (nearly PCRE) regular expression.
 
 The -c, -h, -i, -l, and -n flags are as in grep, although note that as per Go's
-flag parsing convention, they cannot be combined: the option pair -i -n 
+flag parsing convention, they cannot be combined: the option pair -i -n
 cannot be abbreviated to -in.
 
 The -f flag restricts the search to files whose names match the RE2 regular
@@ -103,7 +103,7 @@ func Main() {
 
 	ix := index.Open(index.File())
 	ix.Verbose = *verboseFlag
-	var post []uint32
+	var post []int
 	if *bruteFlag {
 		post = ix.PostingQuery(&index.Query{Op: index.QAll})
 	} else {
@@ -114,7 +114,7 @@ func Main() {
 	}
 
 	if fre != nil {
-		fnames := make([]uint32, 0, len(post))
+		fnames := make([]int, 0, len(post))
 
 		for _, fileid := range post {
 			name := ix.Name(fileid)

@@ -72,7 +72,7 @@ func TestMerge(t *testing.T) {
 
 	checkFiles := func(ix *Index, l ...string) {
 		for i, s := range l {
-			if n := ix.Name(uint32(i)); n != s {
+			if n := ix.Name(i); n != s {
 				t.Errorf("%s: Name(%d) = %s, want %s", nameof(ix), i, n, s)
 			}
 		}
@@ -82,7 +82,7 @@ func TestMerge(t *testing.T) {
 	checkFiles(ix2, "/b/www", "/b/xx", "/b/yy", "/cc")
 	checkFiles(ix3, "/a/x", "/a/y", "/b/www", "/b/xx", "/b/yy", "/c/ab", "/c/de", "/cc")
 
-	check := func(ix *Index, trig string, l ...uint32) {
+	check := func(ix *Index, trig string, l ...int) {
 		l1 := ix.PostingList(tri(trig[0], trig[1], trig[2]))
 		if !equalList(l1, l) {
 			t.Errorf("PostingList(%s, %s) = %v, want %v", nameof(ix), trig, l1, l)
