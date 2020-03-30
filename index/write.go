@@ -599,10 +599,11 @@ func validUTF8(c1, c2 uint32) bool {
 // 24 bits to sort.  Run two rounds of 12-bit radix sort.
 const sortK = 12
 
-var sortTmp []postEntry
-var sortN [1 << sortK]int
 
 func sortPost(post []postEntry) {
+	var sortTmp []postEntry
+	var sortN [1 << sortK]int
+
 	if len(post) > len(sortTmp) {
 		sortTmp = make([]postEntry, len(post))
 	}
