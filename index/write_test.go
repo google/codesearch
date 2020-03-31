@@ -5,6 +5,7 @@
 package index
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 var trivialFiles = map[string]string{
@@ -221,8 +223,26 @@ func fileList64(list ...int) string {
 	return string(buf)
 }
 
+type stringFile struct {
+	*strings.Reader
+	name string
+	size int64
+}
+
+func (f *stringFile) Stat() (os.FileInfo, error) {
+	return f, nil
+}
+
+func (f *stringFile) Name() string       { return f.name }
+func (f *stringFile) Size() int64        { return f.size }
+func (f *stringFile) Mode() os.FileMode  { return 0444 }
+func (f *stringFile) ModTime() time.Time { return time.Time{} }
+func (f *stringFile) IsDir() bool        { return false }
+func (f *stringFile) Sys() interface{}   { return nil }
+
 func buildFlushIndex(out string, paths []string, doFlush bool, fileData map[string]string) {
 	ix := Create(out)
+	ix.Zip = true
 	ix.AddPaths(paths)
 	var files []string
 	for name := range fileData {
@@ -230,7 +250,12 @@ func buildFlushIndex(out string, paths []string, doFlush bool, fileData map[stri
 	}
 	sort.Strings(files)
 	for i, name := range files {
-		ix.Add(name, strings.NewReader(fileData[name]))
+		file := &stringFile{
+			strings.NewReader(fileData[name]),
+			name,
+			int64(len(fileData[name])),
+		}
+		ix.Add(name, file)
 		if doFlush && i == len(files)/2 {
 			ix.flushPost()
 		}
@@ -302,4 +327,52 @@ func TestHeap(t *testing.T) {
 			t.Fatalf("%d should <= %d", a, b)
 		}
 	}
+}
+
+func TestZip(t *testing.T) {
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	files := []string{
+		"a/x", "hello world",
+		"a/y", "goodbye world",
+		"b/www", "world wide indeed",
+		"b/xx", "no, not now",
+		"b/yy", "first potatoes, now liberty?",
+		"c/ab", "give me all the potatoes",
+		"c/de", "or give me death now",
+		"cc", "come to the aid of his potatoes",
+	}
+	for i := 0; i < len(files); i += 2 {
+		ww, err := w.Create(files[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		ww.Write([]byte(files[i+1]))
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	f1, _ := ioutil.TempFile("", "index-test")
+	defer os.Remove(f1.Name())
+	out1 := f1.Name()
+	buildIndex(out1, []string{"x.zip"}, map[string]string{"x.zip": buf.String()})
+
+	ix := Open(out1)
+
+	checkFiles(t, ix,
+		"x.zip#a/x",
+		"x.zip#a/y",
+		"x.zip#b/www",
+		"x.zip#b/xx",
+		"x.zip#b/yy",
+		"x.zip#c/ab",
+		"x.zip#c/de",
+		"x.zip#cc",
+	)
+
+	checkPosting(t, ix, "all", 5)
+	checkPosting(t, ix, "wor", 0, 1, 2)
+	checkPosting(t, ix, "now", 3, 4, 6)
+	checkPosting(t, ix, "pot", 4, 5, 7)
 }

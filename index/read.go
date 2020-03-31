@@ -256,6 +256,9 @@ func (ix *Index) Paths() []string {
 
 // NameBytes returns the name corresponding to the given fileid.
 func (ix *Index) NameBytes(fileid int) []byte {
+	if fileid >= ix.numName {
+		return nil
+	}
 	var off int
 	if ix.is64 {
 		off = ix.uint64(ix.nameIndex + 8*fileid)

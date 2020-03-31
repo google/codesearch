@@ -5,11 +5,13 @@
 package main
 
 import (
+	"archive/zip"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"runtime/pprof"
+	"strings"
 
 	"github.com/google/codesearch/index"
 	"github.com/google/codesearch/regexp"
@@ -56,6 +58,7 @@ var (
 )
 
 func Main() {
+	log.SetPrefix("csearch: ")
 	g := regexp.Grep{
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
@@ -130,9 +133,50 @@ func Main() {
 		post = fnames
 	}
 
+	var (
+		zipFile   string
+		zipReader *zip.ReadCloser
+		zipMap    map[string]*zip.File
+	)
+
 	for _, fileid := range post {
 		name := ix.Name(fileid)
-		g.File(name)
+		file, err := os.Open(name)
+		if err != nil {
+			if i := strings.Index(name, ".zip#"); i >= 0 {
+				zfile, zname := name[:i+4], name[i+5:]
+				if zfile != zipFile {
+					if zipReader != nil {
+						zipReader.Close()
+						zipMap = nil
+					}
+					zipFile = zfile
+					zipReader, err = zip.OpenReader(zfile)
+					if err != nil {
+						zipReader = nil
+					}
+					if zipReader != nil {
+						zipMap = make(map[string]*zip.File)
+						for _, file := range zipReader.File {
+							zipMap[file.Name] = file
+						}
+					}
+				}
+				file := zipMap[zname]
+				if file != nil {
+					r, err := file.Open()
+					if err != nil {
+						continue
+					}
+					g.Reader(r, name)
+					r.Close()
+					continue
+				}
+			}
+			continue
+		}
+		g.Reader(file, name)
+		file.Close()
 	}
 
 	matches = g.Match

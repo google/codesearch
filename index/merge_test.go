@@ -60,45 +60,35 @@ func TestMerge(t *testing.T) {
 	ix2 := Open(out2)
 	ix3 := Open(out3)
 
-	nameof := func(ix *Index) string {
-		switch {
-		case ix == ix1:
-			return "ix1"
-		case ix == ix2:
-			return "ix2"
-		case ix == ix3:
-			return "ix3"
-		}
-		return "???"
-	}
+	checkFiles(t, ix1, "/a/x", "/a/y", "/b/xx", "/b/xy", "/c/ab", "/c/de")
+	checkFiles(t, ix2, "/b/www", "/b/xx", "/b/yy", "/cc")
+	checkFiles(t, ix3, "/a/x", "/a/y", "/b/www", "/b/xx", "/b/yy", "/c/ab", "/c/de", "/cc")
 
-	checkFiles := func(ix *Index, l ...string) {
-		for i, s := range l {
-			if n := ix.Name(i); n != s {
-				t.Errorf("%s: Name(%d) = %s, want %s", nameof(ix), i, n, s)
-			}
-		}
-	}
+	checkPosting(t, ix1, "wor", 0, 1)
+	checkPosting(t, ix1, "now", 2, 5)
+	checkPosting(t, ix1, "all", 3, 4)
 
-	checkFiles(ix1, "/a/x", "/a/y", "/b/xx", "/b/xy", "/c/ab", "/c/de")
-	checkFiles(ix2, "/b/www", "/b/xx", "/b/yy", "/cc")
-	checkFiles(ix3, "/a/x", "/a/y", "/b/www", "/b/xx", "/b/yy", "/c/ab", "/c/de", "/cc")
+	checkPosting(t, ix2, "now", 1, 2)
 
-	check := func(ix *Index, trig string, l ...int) {
-		l1 := ix.PostingList(tri(trig[0], trig[1], trig[2]))
-		if !equalList(l1, l) {
-			t.Errorf("PostingList(%s, %s) = %v, want %v", nameof(ix), trig, l1, l)
+	checkPosting(t, ix3, "all", 5)
+	checkPosting(t, ix3, "wor", 0, 1, 2)
+	checkPosting(t, ix3, "now", 3, 4, 6)
+	checkPosting(t, ix3, "pot", 4, 5, 7)
+}
+
+func checkFiles(t *testing.T, ix *Index, l ...string) {
+	t.Helper()
+	for i, s := range l {
+		if n := ix.Name(i); n != s {
+			t.Fatalf("Name(%d) = %s, want %s", i, n, s)
 		}
 	}
+}
 
-	check(ix1, "wor", 0, 1)
-	check(ix1, "now", 2, 5)
-	check(ix1, "all", 3, 4)
-
-	check(ix2, "now", 1, 2)
-
-	check(ix3, "all", 5)
-	check(ix3, "wor", 0, 1, 2)
-	check(ix3, "now", 3, 4, 6)
-	check(ix3, "pot", 4, 5, 7)
+func checkPosting(t *testing.T, ix *Index, trig string, l ...int) {
+	t.Helper()
+	l1 := ix.PostingList(tri(trig[0], trig[1], trig[2]))
+	if !equalList(l1, l) {
+		t.Errorf("PostingList(%q) = %v, want %v", trig, l1, l)
+	}
 }

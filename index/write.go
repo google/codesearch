@@ -5,6 +5,7 @@
 package index
 
 import (
+	"archive/zip"
 	"io"
 	"io/ioutil"
 	"log"
@@ -34,6 +35,7 @@ import (
 type IndexWriter struct {
 	LogSkip bool // log information about skipped files
 	Verbose bool // log status using package log
+	Zip     bool // index content of zip files
 
 	trigram *sparse.Set // trigrams for the current file
 	buf     [8]byte     // scratch buffer
@@ -128,6 +130,42 @@ func (ix *IndexWriter) AddFile(name string) {
 // Add adds the file f to the index under the given name.
 // It logs errors using package log.
 func (ix *IndexWriter) Add(name string, f io.Reader) {
+	if strings.HasSuffix(name, ".zip") && ix.Zip {
+		f, ok := f.(interface {
+			io.ReaderAt
+			Stat() (os.FileInfo, error)
+		})
+		if !ok {
+			goto NoZip
+		}
+		info, err := f.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			goto NoZip
+		}
+		r, err := zip.NewReader(f, info.Size())
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		for _, file := range r.File {
+			r, err := file.Open()
+			if err != nil {
+				println("no3", name)
+
+				log.Printf("%s: %v", r, err)
+				continue
+			}
+			ix.add(name+"#"+file.Name, r)
+			r.Close()
+		}
+		return
+	}
+
+NoZip:
+	ix.add(name, f)
+}
+
+func (ix *IndexWriter) add(name string, f io.Reader) {
 	ix.trigram.Reset()
 	var (
 		c       = byte(0)
@@ -306,7 +344,9 @@ func (ix *IndexWriter) flushPost() {
 	ix.post = ix.post[:0]
 	end := ix.postFile.offset()
 
-	log.Printf("flushed %d bytes to disk; total %d", end-start, end)
+	if ix.Verbose {
+		log.Printf("flushed %d bytes to disk; total %d", end-start, end)
+	}
 	ix.postEnds = append(ix.postEnds, end)
 }
 
@@ -315,8 +355,10 @@ func (ix *IndexWriter) flushPost() {
 func (ix *IndexWriter) mergePost(out *bufWriter) {
 	var h postHeap
 
-	log.Printf("merge %d files + mem", len(ix.postEnds))
-	h.addFile(ix.postFile, ix.postEnds)
+	if len(ix.postEnds) > 0 {
+		log.Printf("merge mem + %d MB disk", ix.postEnds[len(ix.postEnds)-1]>>20)
+		h.addFile(ix.postFile, ix.postEnds)
+	}
 	sortPost(ix.post)
 	h.addMem(ix.post)
 
