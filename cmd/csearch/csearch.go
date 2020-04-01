@@ -11,11 +11,11 @@ import (
 	"os"
 	"runtime/pprof"
 
-	"github.com/google/codesearch/index"
+	"github.com/Evengining/codesearch/index"
 	"github.com/google/codesearch/regexp"
 )
 
-var usageMessage = `usage: csearch [-c] [-f fileregexp] [-h] [-i] [-l] [-n] regexp
+var usageMessage = `usage: csearch [-c] [-f fileregexp] [-h] [-i] [-l] [-n] regexp [filter for regex]
 
 Csearch behaves like grep over all indexed files, searching for regexp,
 an RE2 (nearly PCRE) regular expression.
@@ -66,7 +66,7 @@ func Main() {
 	flag.Parse()
 	args := flag.Args()
 
-	if len(args) != 1 {
+	if len(args) != 2 {
 		usage()
 	}
 
@@ -96,7 +96,16 @@ func Main() {
 			log.Fatal(err)
 		}
 	}
+	filter := "(?m)" + args[1]
+	if *iFlag {
+		filter = "(?i)" + filter
+	}
+	filterRe, err := regexp.Compile(filter)
+	if err != nil {
+		log.Fatal(err)
+	}
 	q := index.RegexpQuery(re.Syntax)
+	filterQuery := index.RegexpQuery(filterRe.Syntax)
 	if *verboseFlag {
 		log.Printf("query: %s\n", q)
 	}
@@ -105,9 +114,9 @@ func Main() {
 	ix.Verbose = *verboseFlag
 	var post []uint32
 	if *bruteFlag {
-		post = ix.PostingQuery(&index.Query{Op: index.QAll})
+		post = ix.PostingQuery(&index.Query{Op: index.QAll}, filterQuery)
 	} else {
-		post = ix.PostingQuery(q)
+		post = ix.PostingQuery(q, filterQuery)
 	}
 	if *verboseFlag {
 		log.Printf("post query identified %d possible files\n", len(post))
