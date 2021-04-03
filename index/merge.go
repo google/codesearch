@@ -26,7 +26,7 @@ package index
 // Now merge the posting lists (this is why they begin with the trigram).
 // During the merge, translate the docid numbers to the new C docid space.
 // Also during the merge, write the posting list index to a temporary file as usual.
-// 
+//
 // Copy the name index and posting list index into C's index and write the trailer.
 // Rename C's index onto the new index.
 

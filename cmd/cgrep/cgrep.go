@@ -19,7 +19,7 @@ var usageMessage = `usage: cgrep [-c] [-h] [-i] [-l] [-n] regexp [file...]
 Cgrep behaves like grep, searching for regexp, an RE2 (nearly PCRE) regular expression.
 
 The -c, -h, -i, -l, and -n flags are as in grep, although note that as per Go's
-flag parsing convention, they cannot be combined: the option pair -i -n 
+flag parsing convention, they cannot be combined: the option pair -i -n
 cannot be abbreviated to -in.
 `
 
