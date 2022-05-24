@@ -1,0 +1,26 @@
+hOW TO BUILD
+
+Directory layout:
+  GITPATH:  The directory to checkout the codesearch repository to.
+            We'll use ~/codesearch/git
+  GOPATH: The directory go will output artifacts and binaries to.
+          We'll use ~/codesearch/gopath
+
+Set the GOPATH environment variable:
+
+  export GOPATH=~/codesearch/gopath
+
+Check out the code to GITPATH, build, and install it to GOPATH:
+
+  mkdir ~/codesearch
+  cd ~/codesearch
+  git clone git@github.com:hakonhall/codesearch.git git
+  cd git
+  go install ./...
+
+This should have created 3 binaries in ~/codesearch/gopath/bin.
+
+MODIFICATIONS ON TOP OF google/codesearch
+
+Updated import paths to refer to hakonhall/codesearch.  Doesn't seem
+to take effect immediately with go get. :shrug:
