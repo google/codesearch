@@ -1,0 +1,164 @@
+body {
+    background-color: #f8f8f8;
+}
+
+a {
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.key {
+    font-weight: bold;
+}
+
+.help-help {
+    text-align: center;
+}
+
+.help {
+    text-align: center;
+}
+
+.search {
+    font-size: 125%;
+}
+
+.search input {
+    font-size: 100%;
+}
+
+form {
+    margin-bottom: 0px;
+}
+
+/* table of a single hit */
+table.hits {
+    width: 100%;
+}
+
+table.file-hit {
+    width: 100%;
+}
+
+th.file-hit-header, th.file-hit-header a, .path {
+    text-align: left;
+    font-weight: normal;
+    font-family: monospace;
+    color: #000080;
+}
+
+/* table of a single hit */
+table.hit {
+    width: 100%;
+}
+
+td.location {
+    width: 5ex;
+    text-align: right;
+}
+
+.location {
+    font-family: monospace;
+    font-size: 90%;
+}
+
+td.location a {
+    color: black;
+}
+
+li.L0, li.L1, li.L2, li.L3, li.L5, li.L6, li.L7, li.L8 {
+    /* TODO: what is this, and why isn't li.L4 and li.L9 included? */
+    list-style-type: decimal !important;
+}
+
+li.L0, li.L2, li.L4, li.L6, li.L8 { /* odd lines including first */ }
+li.L1, li.L3, li.L5, li.L7, li.L9 { /* even lines */ }
+
+.even-line {
+    //background-color: #ffffff;
+}
+
+.odd-line {
+    //background-color: #f4f4f4;
+}
+
+pre.linenums {
+    background-color: white;
+}
+
+/* #file-pre {*/
+ol.linenums {
+    /* border: 1px solid black; */
+}
+
+td.line-hit {
+    background-color: white;
+    padding: 0px;
+}
+
+ol li.hit, td.line-selected, th.selected-file {
+    background-color: #ffffc0;
+}
+
+pre.hit {
+    color: rgb(136, 0, 0);
+}
+
+.matched-text {
+    background-color: yellow;
+}
+
+a.matched-text:hover {
+    text-decoration: none;
+}
+
+.focus-matched-text {
+    background-color: red;
+}
+
+.input-focus-key {
+    vertical-align: super;
+    color: 404040;
+    font-size: 75%;
+}
+
+table.footer {
+    width: 100%;
+}
+/*
+hr.post-help {
+    -webkit-margin-after: 0px;
+}
+    
+hr.timestamp {
+    -webkit-margin-before: 0px;
+}
+*/
+.timestamp a {
+    color: #8080c0;
+}
+
+.left-footer {
+    width: 30%;
+    color: #808080;
+    font-size: 75%;
+}
+
+.center-footer {
+    width: 40%;
+    text-align: center;
+}
+
+.right-footer {
+    width: 30%;
+    text-align: right;
+    color: #808080;
+    font-size: 75%;
+}
+
+ol {
+    -webkit-padding-start: 60px;
+}
