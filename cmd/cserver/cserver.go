@@ -17,8 +17,8 @@ import (
 	"strings"
 	"strconv"
 
-	"code.google.com/p/codesearch/index"
-	"code.google.com/p/codesearch/regexp"
+	"github.com/hakonhall/codesearch/index"
+	"github.com/hakonhall/codesearch/regexp"
 )
 
 var defaultMaxHits = 100
