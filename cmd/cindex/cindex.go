@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/pprof"
-	"sort"
+	"slices"
 
 	"github.com/google/codesearch/index"
 )
@@ -63,18 +63,18 @@ var (
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to this file")
 	zipFlag     = flag.Bool("zip", false, "index content in zip files")
+	statsFlag   = flag.Bool("stats", false, "print index size statistics")
 )
 
 func main() {
 	log.SetPrefix("cindex: ")
 	flag.Usage = usage
 	flag.Parse()
-	args := flag.Args()
 
 	if *listFlag {
 		ix := index.Open(index.File())
-		for _, arg := range ix.Paths() {
-			fmt.Printf("%s\n", arg)
+		for p := range ix.Roots().All() {
+			fmt.Printf("%s\n", p)
 		}
 		return
 	}
@@ -89,32 +89,26 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	if *resetFlag && len(args) == 0 {
+	if *resetFlag && flag.NArg() == 0 {
 		os.Remove(index.File())
 		return
 	}
-	if len(args) == 0 {
+	var roots []index.Path
+	if flag.NArg() == 0 {
 		ix := index.Open(index.File())
-		for _, arg := range ix.Paths() {
-			args = append(args, arg)
+		roots = slices.Collect(ix.Roots().All())
+	} else {
+		// Translate arguments to absolute paths so that
+		// we can generate the file list in sorted order.
+		for _, arg := range flag.Args() {
+			a, err := filepath.Abs(arg)
+			if err != nil {
+				log.Printf("%s: %s", arg, err)
+				continue
+			}
+			roots = append(roots, index.MakePath(a))
 		}
-	}
-
-	// Translate paths to absolute paths so that we can
-	// generate the file list in sorted order.
-	for i, arg := range args {
-		a, err := filepath.Abs(arg)
-		if err != nil {
-			log.Printf("%s: %s", arg, err)
-			args[i] = ""
-			continue
-		}
-		args[i] = a
-	}
-	sort.Strings(args)
-
-	for len(args) > 0 && args[0] == "" {
-		args = args[1:]
+		slices.SortFunc(roots, index.Path.Compare)
 	}
 
 	master := index.File()
@@ -130,10 +124,10 @@ func main() {
 	ix := index.Create(file)
 	ix.Verbose = *verboseFlag
 	ix.Zip = *zipFlag
-	ix.AddPaths(args)
-	for _, arg := range args {
-		log.Printf("index %s", arg)
-		filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
+	ix.AddRoots(roots)
+	for _, root := range roots {
+		log.Printf("index %s", root)
+		filepath.Walk(root.String(), func(path string, info os.FileInfo, err error) error {
 			if _, elem := filepath.Split(path); elem != "" {
 				// Skip various temporary or "hidden" files or directories.
 				if elem[0] == '.' || elem[0] == '#' || elem[0] == '~' || elem[len(elem)-1] == '~' {
@@ -148,7 +142,10 @@ func main() {
 				return nil
 			}
 			if info != nil && info.Mode()&os.ModeType == 0 {
-				ix.AddFile(path)
+				if err := ix.AddFile(path); err != nil {
+					log.Printf("%s: %s", path, err)
+					return nil
+				}
 			}
 			return nil
 		})
@@ -163,5 +160,10 @@ func main() {
 		os.Rename(file+"~", master)
 	}
 	log.Printf("done")
+
+	if *statsFlag {
+		ix := index.Open(master)
+		ix.PrintStats()
+	}
 	return
 }

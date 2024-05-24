@@ -7,9 +7,9 @@ package index
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sort"
 	"strings"
@@ -17,16 +17,20 @@ import (
 	"time"
 )
 
+func init() {
+	panicOnCorrupt = true
+}
+
 var trivialFiles = map[string]string{
 	"f0":       "\n\n",
 	"file1":    "\na\n",
-	"thefile2": "\nab\n",
+	"the/file": "\nab\n",
 	"file3":    "\nabc\n",
 	"afile4":   "\ndabc\n",
 	"file5":    "\nxyzw\n",
 }
 
-var trivialIndex32 = join(
+var trivialIndexV1 = join(
 	// header
 	"csearch index 1\n",
 
@@ -39,7 +43,7 @@ var trivialIndex32 = join(
 	"file1\x00",
 	"file3\x00",
 	"file5\x00",
-	"thefile2\x00",
+	"the/file\x00",
 	"\x00",
 
 	// list of posting lists
@@ -89,70 +93,86 @@ var trivialIndex32 = join(
 	"\ncsearch trailr\n",
 )
 
-var trivialIndex64 = join(
+var trivialIndexV2 = join(
 	// header
-	"csearch index 1\n",
+	"csearch index 2\n",
 
-	// list of paths
-	"\x00",
+	// list of paths (empty)
 
 	// list of names
-	"afile4\x00",
-	"f0\x00",
-	"file1\x00",
-	"file3\x00",
-	"file5\x00",
-	"thefile2\x00",
-	"\x00",
+	pad(16,
+		"\x00\x06afile4",
+		"\x00\x02f0",
+		"\x01\x04ile1",
+		"\x04\x013",
+		"\x04\x015",
+		"\x00\x08the/file",
+	),
 
 	// list of posting lists
-	"\na\n", fileList64(2), // file1; 1-byte file list
-	"\nab", fileList64(3, 5), // file3, thefile2; 2-byte file list
-	"\nda", fileList64(0), // afile4; 1-byte file list
-	"\nxy", fileList64(4), // file5; 1-byte file list
-	"ab\n", fileList64(5), // thefile2; 1-byte file list
-	"abc", fileList64(0, 3), // afile4, file3; 2-byte file list
-	"bc\n", fileList64(0, 3), // afile4, file3; 2-byte file list
-	"dab", fileList64(0), // afile4; 1-byte file list
-	"xyz", fileList64(4), // file5; 1-byte file list
-	"yzw", fileList64(4), // file5; 1-byte file list
-	"zw\n", fileList64(4), // file5; 1-byte file list
-	"\xff\xff\xff", fileList64(),
+	pad(16,
+		"\na\n", fileList64(2), // file1; 1-byte file list
+		"\nab", fileList64(3, 5), // file3, thefile2; 2-byte file list
+		"\nda", fileList64(0), // afile4; 1-byte file list
+		"\nxy", fileList64(4), // file5; 1-byte file list
+		"ab\n", fileList64(5), // thefile2; 1-byte file list
+		"abc", fileList64(0, 3), // afile4, file3; 2-byte file list
+		"bc\n", fileList64(0, 3), // afile4, file3; 2-byte file list
+		"dab", fileList64(0), // afile4; 1-byte file list
+		"xyz", fileList64(4), // file5; 1-byte file list
+		"yzw", fileList64(4), // file5; 1-byte file list
+		"zw\n", fileList64(4), // file5; 1-byte file list
+		"\xff\xff\xff", fileList64(),
+	),
 
 	// name index
-	u64(0),
-	u64(6+1),
-	u64(6+1+2+1),
-	u64(6+1+2+1+5+1),
-	u64(6+1+2+1+5+1+5+1),
-	u64(6+1+2+1+5+1+5+1+5+1),
-	u64(6+1+2+1+5+1+5+1+5+1+8+1),
+	pad(16,
+		u64(0),
+	),
 
-	// posting list index,
-	"\na\n", u64(1), u64(0),
-	"\nab", u64(2), u64(4),
-	"\nda", u64(1), u64(4+5),
-	"\nxy", u64(1), u64(4+5+4),
-	"ab\n", u64(1), u64(4+5+4+4),
-	"abc", u64(2), u64(4+5+4+4+4),
-	"bc\n", u64(2), u64(4+5+4+4+4+5),
-	"dab", u64(1), u64(4+5+4+4+4+5+5),
-	"xyz", u64(1), u64(4+5+4+4+4+5+5+4),
-	"yzw", u64(1), u64(4+5+4+4+4+5+5+4+4),
-	"zw\n", u64(1), u64(4+5+4+4+4+5+5+4+4+4),
-	"\xff\xff\xff", u64(0), u64(4+5+4+4+4+5+5+4+4+4+4),
-
-	"\x00\x00", // padding
+	// posting list index block
+	pad(postBlockSize,
+		"\na\n", uv(1), uv(0),
+		"\nab", uv(2), uv(5),
+		"\nda", uv(1), uv(6),
+		"\nxy", uv(1), uv(5),
+		"ab\n", uv(1), uv(5),
+		"abc", uv(2), uv(5),
+		"bc\n", uv(2), uv(5),
+		"dab", uv(1), uv(5),
+		"xyz", uv(1), uv(5),
+		"yzw", uv(1), uv(5),
+		"zw\n", uv(1), uv(5),
+		"\xff\xff\xff", uv(0), uv(5),
+	),
 
 	// trailer
-	u64(16),
-	u64(16+1),
-	u64(16+1+38),
-	u64(16+1+38+51),
-	u64(16+1+38+51+56),
+	u64(0x10), // offset to list of paths
+	u64(0),    // number of paths
+	u64(0x10), // offset to list of names
+	u64(6),    // number of names
+	u64(0x40), // offset to posting lists
+	u64(12),   // number of posting lists / trigrams
+	u64(0x80), // offset to name index
+	u64(0x90), // offset to posting index
 
-	"\ncsearch trlr64\n",
+	"\ncsearch trlr 2\n",
 )
+
+func pad(n int, list ...string) string {
+	s := strings.Join(list, "")
+	frag := len(s) % n
+	if frag != 0 {
+		s += strings.Repeat("\x00", n-frag)
+	}
+	return s
+}
+
+func uv(n int) string {
+	var buf [binary.MaxVarintLen64]byte
+	n = binary.PutUvarint(buf[:], uint64(n))
+	return string(buf[:n])
+}
 
 func join(s ...string) string {
 	return strings.Join(s, "")
@@ -194,7 +214,10 @@ func fileList64(list ...int) string {
 
 	last := -1
 	for _, x := range list {
-		delta := x - last + 1
+		delta := x - last
+		if delta >= deltaZeroEnc {
+			delta++
+		}
 		last = x
 		nbit := 0
 		for delta > 1<<(nbit+1)-1 {
@@ -207,8 +230,10 @@ func fileList64(list ...int) string {
 		b |= uint64(delta) << nb
 		nb += uint(nbit)
 	}
-	b |= 1 << nb // trailing zero (encoded as 1)
+	nb += 4
+	b |= 1 << nb
 	nb++
+	nb += 4
 	if nb > 64 {
 		panic("fileList64: too long")
 	}
@@ -240,10 +265,19 @@ func (f *stringFile) ModTime() time.Time { return time.Time{} }
 func (f *stringFile) IsDir() bool        { return false }
 func (f *stringFile) Sys() interface{}   { return nil }
 
-func buildFlushIndex(out string, paths []string, doFlush bool, fileData map[string]string) {
+func apply[In, Out any](f func(In) Out, xs []In) []Out {
+	var ys []Out
+	for _, x := range xs {
+		ys = append(ys, f(x))
+	}
+	return ys
+}
+
+func buildFlushIndex(out string, roots []string, doFlush bool, fileData map[string]string) {
 	ix := Create(out)
 	ix.Zip = true
-	ix.AddPaths(paths)
+
+	ix.AddRoots(apply(MakePath, roots))
 	var files []string
 	for name := range fileData {
 		files = append(files, name)
@@ -266,33 +300,33 @@ func buildFlushIndex(out string, paths []string, doFlush bool, fileData map[stri
 	ix.Flush()
 }
 
-func buildIndex(name string, paths []string, fileData map[string]string) {
-	buildFlushIndex(name, paths, false, fileData)
+func buildIndex(name string, roots []string, fileData map[string]string) {
+	buildFlushIndex(name, roots, false, fileData)
 }
 
 func testTrivialWrite(t *testing.T, doFlush bool) {
-	old := writeOldIndex
+	old := writeVersion
 	defer func() {
-		writeOldIndex = old
+		writeVersion = old
 	}()
 
-	for size := 32; size <= 64; size += 32 {
-		t.Run(fmt.Sprint(size), func(t *testing.T) {
-			writeOldIndex = size == 32
-			f, _ := ioutil.TempFile("", "index-test")
+	for v := 1; v <= 2; v++ {
+		t.Run(fmt.Sprint("V", v), func(t *testing.T) {
+			writeVersion = v
+			f, _ := os.CreateTemp("", "index-test")
 			defer os.Remove(f.Name())
 			out := f.Name()
 			buildFlushIndex(out, nil, doFlush, trivialFiles)
 
-			data, err := ioutil.ReadFile(out)
+			data, err := os.ReadFile(out)
 			if err != nil {
 				t.Fatalf("reading _test/index.triv: %v", err)
 			}
 			var want []byte
-			if size == 32 {
-				want = []byte(trivialIndex32)
+			if v == 1 {
+				want = []byte(trivialIndexV1)
 			} else {
-				want = []byte(trivialIndex64)
+				want = []byte(trivialIndexV2)
 			}
 			if !bytes.Equal(data, want) {
 				i := 0
@@ -353,7 +387,7 @@ func TestZip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f1, _ := ioutil.TempFile("", "index-test")
+	f1, _ := os.CreateTemp("", "index-test")
 	defer os.Remove(f1.Name())
 	out1 := f1.Name()
 	buildIndex(out1, []string{"x.zip"}, map[string]string{"x.zip": buf.String()})
@@ -361,14 +395,14 @@ func TestZip(t *testing.T) {
 	ix := Open(out1)
 
 	checkFiles(t, ix,
-		"x.zip#a/x",
-		"x.zip#a/y",
-		"x.zip#b/www",
-		"x.zip#b/xx",
-		"x.zip#b/yy",
-		"x.zip#c/ab",
-		"x.zip#c/de",
-		"x.zip#cc",
+		"x.zip\x01a/x",
+		"x.zip\x01a/y",
+		"x.zip\x01b/www",
+		"x.zip\x01b/xx",
+		"x.zip\x01b/yy",
+		"x.zip\x01c/ab",
+		"x.zip\x01c/de",
+		"x.zip\x01cc",
 	)
 
 	checkPosting(t, ix, "all", 5)

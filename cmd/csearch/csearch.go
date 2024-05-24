@@ -121,7 +121,7 @@ func Main() {
 
 		for _, fileid := range post {
 			name := ix.Name(fileid)
-			if fre.MatchString(name, true, true) < 0 {
+			if fre.MatchString(name.String(), true, true) < 0 {
 				continue
 			}
 			fnames = append(fnames, fileid)
@@ -140,8 +140,8 @@ func Main() {
 	)
 
 	for _, fileid := range post {
-		name := ix.Name(fileid)
-		file, err := os.Open(name)
+		name := ix.Name(fileid).String()
+		file, err := os.Open(string(name))
 		if err != nil {
 			if i := strings.Index(name, ".zip#"); i >= 0 {
 				zfile, zname := name[:i+4], name[i+5:]

@@ -4,129 +4,151 @@
 
 package index
 
-// Index format.
+// Index Format
 //
 // An index stored on disk has the format:
 //
-//	"csearch index 1\n"
-//	list of paths
+//	"csearch index 2\n"
+//	list of roots
 //	list of names
 //	list of posting lists
 //	name index
 //	posting list index
 //	trailer
 //
-// The list of paths is a sorted sequence of NUL-terminated file or directory names.
-// The index covers the file trees rooted at those paths.
-// The list ends with an empty name ("\x00").
+// The list of roots and list of names are sorted (by Path.Cmp)
+// sequences of prefix-compressed paths. Each path is encoded
+// as a varint number of prefix bytes to copy from the previous
+// path, a varint number of suffix bytes that follow, and the
+// suffix bytes. For example, the two path sequnce
+// {"abcdef", "abcx"} is encoded as [0 6 abcdef 3 1 x].
 //
-// The list of names is a sorted sequence of NUL-terminated file names.
-// The initial entry in the list corresponds to file #0,
-// the next to file #1, and so on.  The list ends with an
-// empty name ("\x00").
+// In the name list, every 16th name has a forced prefix
+// length of 0, so that random access is possible by starting
+// at one of these entries. The name index lists the offset
+// of every 16th name.
 //
-// The list of posting lists are a sequence of posting lists.
+// The list of posting lists is a sequence of posting lists.
 // Each posting list has the form:
 //
 //	trigram [3]
 //	deltas [v]...
 //
 // The trigram gives the 3 byte trigram that this list describes.  The
-// delta list is a sequence of Fibonacci-coded deltas between file
-// IDs, ending with a zero delta.  For example, the delta list [2,5,1,1,0]
+// delta list is a sequence of [γ-coded] deltas between file IDs,
+// ending with a zero delta.  For example, the delta list [2,5,1,1,0]
 // encodes the file ID list 1, 6, 7, 8.  The delta list [0] would
 // encode the empty file ID list, but empty posting lists are usually
 // not recorded at all.  The list of posting lists ends with an entry
 // with trigram "\xff\xff\xff" and a delta list consisting a single zero.
+// In the γ-encoding, which cannot represent 0, 0 encodes as 31,
+// and all values v ≥ 31 encode as v+1.
 //
-// The indexes enable efficient random access to the lists.  The name
-// index is a sequence of 8-byte big-endian values listing the byte
-// offset in the name list where each name begins.  The posting list
-// index is a sequence of index entries describing each successive
-// posting list.  Each index entry has the form:
+// The indexes enable efficient random access to the lists.
+//
+// The name index is a sequence of 8-byte big-endian values listing the
+// byte offset in the name list where every 16th name begins.
+//
+// The posting list index is a sequence of index entries describing
+// each successive posting list.  Each index entry has the form:
 //
 //	trigram [3]
-//	file count [8]
-//	offset [8]
+//	file count [v]
+//	offset [v]
+//
+// The file count and offset are varint-encoded, breaking random
+// access to the posting list index. To restore that, any index
+// entry that would otherwise cross a 128-byte boundary is preceded
+// by zeroed padding bytes up to the boundary. The overall index
+// is also zero-padded to a multiple of 128 bytes.
+// The offsets in each 128-byte chunk are delta-encoded starting
+// from a base offset of 0.
 //
 // Index entries are only written for the non-empty posting lists,
 // so finding the posting list for a specific trigram requires a
-// binary search over the posting list index.  In practice, the majority
-// of the possible trigrams are never seen, so omitting the missing
-// ones represents a significant storage savings.
+// binary search over the posting list index. To find an entry
+// in the index for a given trigram, binary search on the 128-byte
+// sections to find the 128-byte entry where it would be,
+// and then linear search in the 128-byte section.
+//
+// In practice, the majority of the possible trigrams are never
+// seen, so omitting the missing ones represents a significant
+// storage savings.
 //
 // The trailer has the form:
 //
-//	offset of path list [8]
+//	offset of root list [8]
+//	number of roots [8]
 //	offset of name list [8]
+//	number of names [8]
 //	offset of posting lists [8]
+//	number of posting lists [8]
 //	offset of name index [8]
 //	offset of posting list index [8]
-//	"\ncsearch trlr64\n"
+//	"\ncsearch trlr 2\n"
 //
 // The code has never checked the index header, so version changes
 // must be made by modifying the trailer.
-//
-//
 // Old 32-bit Version
 //
 // An older 32-bit format had the following differences:
 //
-//  - The trailer was "\ncsearch trailr\n"
-//  - The offsets in the trailer were 4-byte instead of 8-byte.
-//  - The name index was 4-byte values instead of 8-byte.
-//  - The trigram index entry used 4-byte offsets instead of 8-byte.
+//  - The header was "csearch index 1\n".
+//  - The trailer was "\ncsearch trailr\n".
+//  - All the 8-byte values were 4-byte values.
+//  - The root and names lists were not prefix-compressed nor
+//    varint-delimited. Instead, they were as a sequence of
+//    NUL-terminated paths, with a final empty path marking
+//    the end of the list.
+//  - The name index had an entry for every name, not every 16th name.
+//  - The trailer did not contain "number of roots".
+//  - The trailer did not contain "number of names".
+//  - The posting list deltas were uvarint-coded instead of γ-coded.
 //
-// The older format also used byte-wise uvarint encoding to store
-// posting list deltas.
-//
-// At the time of conversion, one local .csearchindex file had the
-// following file region sizes:
-//
-//		         16 header
-//		      7,710 path list
-//		 26,619,905 name list
-//		553,134,142 posting lists
-//		  1,602,912 name index
-//		 11,015,125 posting list index
-//		         36 trailer
-//		-----------
-//		592,379,846 total
-//
-// The 64-bit version of this file would have instead:
+// At the time of conversion, indexing Linux git at v6.9-9880-gdaa121128a2d
+// with the old index format had the following file region sizes:
 //
 //		         16 header
-//		      7,710 path list
-//		 26,619,905 name list
-//		553,134,142 posting lists
-//		  3,205,824 name index
-//		 19,026,125 posting list index
+//		         22 path list
+//		  5,082,088 name list
+//		147,703,290 posting lists
+//		    337,656 name index
+//		  4,636,335 posting list index
 //		         36 trailer
 //		-----------
-//		601,993,758 total
+//		157,759,443 total
 //
-// Overall, the 64-bit offsets cause a 1.6% increase in size
-// for a large index.
-//
-// The 64-bit version of this file would have instead:
+// The 64-bit version of this file had instead:
 //
 //		         16 header
-//		      7,710 path list
-//		 26,619,905 name list
-//		340,836,441 posting lists
-//		  3,205,824 name index
-//		 19,026,125 posting list index
-//		         36 trailer
+//		         32 path list
+//		  1,170,592 name list
+//		 85,872,880 posting lists
+//		     42,208 name index
+//		  2,292,480 posting list index
+//		         80 trailer
 //		-----------
-//		389,696,057 total
+//		 89,378,288 total (including padding)
 //
-// Overall, the 64-bit offsets caused a 1.6% increase in size
-// for a large index, but the smaller posting lists caused
-// a 34.2% reduction in the size, for an overall 32.6% reduction.
+// Overall, the tighter encoding in the 64-bit-friendly version
+// yields a >40% reduction in index size.
+//
+// For an index of 1.6 TB of Go module zip files, the direct 64-bit
+// extension of the v1 index used 162 GB, while the tighter encodings
+// reduced the index to 84 GB:
+//
+//	name list:      28.6 GB   ->  4.0 GB
+//	posting lists: 132.7 GB   -> 80.3 GB
+//	name index:      1.1 GB   ->  0.07 GB
+//	posting index:   0.050 GB ->  0.016 GB
+//
+// [γ-coded]: https://en.wikipedia.org/wiki/Elias_gamma_coding
 
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"iter"
 	"log"
 	"os"
 	"path/filepath"
@@ -135,73 +157,86 @@ import (
 )
 
 const (
-	magic          = "csearch index 1\n"
-	trailerMagic32 = "\ncsearch trailr\n"
-	trailerMagic64 = "\ncsearch trlr64\n"
+	magicV1        = "csearch index 1\n"
+	magicV2        = "csearch index 2\n"
+	trailerMagicV1 = "\ncsearch trailr\n"
+	trailerMagicV2 = "\ncsearch trlr 2\n"
+
+	postBlockSize = 256 // posting index entries are packed into 256-byte blocks
+	nameGroupSize = 16  // names are prefix-compressed in groups of 16
+
+	postIndexEntrySizeV1 = 3 + 4 + 4
 )
 
 // An Index implements read-only access to a trigram index.
 type Index struct {
-	Verbose       bool
-	name          string
-	data          mmapData
-	is64          bool
-	postEntrySize int
-	pathData      int
-	nameData      int
-	postData      int
-	nameIndex     int
-	postIndex     int
-	numName       int
-	numPost       int
+	Verbose      bool
+	name         string
+	data         mmapData
+	version      int
+	pathData     int
+	numPath      int
+	nameData     int
+	postData     int
+	nameIndex    int
+	numName      int
+	postIndex    int
+	numPost      int
+	numPostBlock int
 }
 
-const (
-	postEntrySize32 = 3 + 4 + 4
-	postEntrySize64 = 3 + 8 + 8
-)
+func (ix *Index) PrintStats() {
+	fmt.Printf("%d path list (%d paths)\n", ix.nameData-ix.pathData, ix.numPath)
+	fmt.Printf("%d name list (%d names)\n", ix.postData-ix.nameData, ix.numName)
+	fmt.Printf("%d posting lists (%d trigrams)\n", ix.nameIndex-ix.postData, ix.numPost)
+	fmt.Printf("%d name index\n", ix.postIndex-ix.nameIndex)
+	fmt.Printf("%d posting index\n", ix.numPostBlock*postBlockSize)
+}
 
 func Open(file string) *Index {
 	mm := mmap(file)
 	ix := &Index{name: file, data: mm}
-	if len(mm.d) < len(trailerMagic32) {
+	if len(mm.d) < len(trailerMagicV1) {
 		ix.corrupt()
 	}
 
-	magic := string(mm.d[len(mm.d)-len(trailerMagic32):])
+	magic := string(mm.d[len(mm.d)-len(trailerMagicV1):])
 	var n int
 	switch magic {
 	default:
 		ix.corrupt()
 
-	case trailerMagic32:
-		n = len(mm.d) - len(trailerMagic32) - 5*4
+	case trailerMagicV1:
+		ix.version = 1
+		n = len(mm.d) - len(trailerMagicV1) - 5*4
 		if n < 0 {
 			ix.corrupt()
 		}
-		ix.postEntrySize = postEntrySize32
 		ix.pathData = ix.uint32(n)
 		ix.nameData = ix.uint32(n + 4)
 		ix.postData = ix.uint32(n + 8)
 		ix.nameIndex = ix.uint32(n + 12)
 		ix.postIndex = ix.uint32(n + 16)
 		ix.numName = (ix.postIndex-ix.nameIndex)/4 - 1
+		ix.numPost = (n - ix.postIndex) / postIndexEntrySizeV1
+		ix.numPath = -1
 
-	case trailerMagic64:
-		ix.is64 = true
-		n = len(mm.d) - len(trailerMagic64) - 5*8
+	case trailerMagicV2:
+		ix.version = 2
+		n = len(mm.d) - len(trailerMagicV2) - 8*8
 		if n < 0 {
 			ix.corrupt()
 		}
-		ix.postEntrySize = postEntrySize64
 		ix.pathData = ix.uint64(n)
-		ix.nameData = ix.uint64(n + 8)
-		ix.postData = ix.uint64(n + 16)
-		ix.nameIndex = ix.uint64(n + 24)
-		ix.postIndex = ix.uint64(n + 32)
-		ix.numName = (ix.postIndex-ix.nameIndex)/8 - 1
+		ix.numPath = ix.uint64(n + 1*8)
+		ix.nameData = ix.uint64(n + 2*8)
+		ix.numName = ix.uint64(n + 3*8)
+		ix.postData = ix.uint64(n + 4*8)
+		ix.numPost = ix.uint64(n + 5*8)
+		ix.nameIndex = ix.uint64(n + 6*8)
+		ix.postIndex = ix.uint64(n + 7*8)
+		ix.numPostBlock = (n - ix.postIndex) / postBlockSize
 	}
-	ix.numPost = (n - ix.postIndex) / ix.postEntrySize
 
 	return ix
 }
@@ -239,33 +274,45 @@ func (ix *Index) uint64(off int) int {
 	return int(v)
 }
 
-// Paths returns the list of indexed paths.
-func (ix *Index) Paths() []string {
-	off := ix.pathData
-	var x []string
-	for {
-		s := ix.str(off)
-		if len(s) == 0 {
-			break
-		}
-		x = append(x, string(s))
-		off += len(s) + 1
-	}
-	return x
+// Roots returns the list of indexed roots.
+func (ix *Index) Roots() *PathReader {
+	return NewPathReader(ix.version, ix.slice(ix.pathData, ix.nameData-ix.pathData), ix.numPath)
 }
 
-// NameBytes returns the name corresponding to the given fileid.
-func (ix *Index) NameBytes(fileid int) []byte {
-	if fileid >= ix.numName {
-		return nil
+// Name returns the name corresponding to the given fileid.
+func (ix *Index) Name(fileid int) Path {
+	return ix.NamesAt(fileid, fileid+1).Path()
+}
+
+// NameAt returns a PathReader returning the names for
+// fileids in the range [min, max).
+func (ix *Index) NamesAt(min, max int) *PathReader {
+	if min >= ix.numName {
+		return NewPathReader(1, nil, 0)
 	}
+	limit := max - min
 	var off int
-	if ix.is64 {
-		off = ix.uint64(ix.nameIndex + 8*fileid)
+	if ix.version == 1 {
+		off = ix.uint32(ix.nameIndex + min*4)
 	} else {
-		off = ix.uint32(ix.nameIndex + 4*fileid)
+		off = ix.uint64(ix.nameIndex + min/nameGroupSize*8)
+		limit += min % nameGroupSize
 	}
-	return ix.str(ix.nameData + off)
+	names := NewPathReader(ix.version, ix.slice(ix.nameData+off, ix.postData-(ix.nameData+off)), limit)
+	if ix.version == 2 {
+		for range min % nameGroupSize {
+			names.Next()
+		}
+	}
+	return names
+}
+
+func (ix *Index) Names(lo, hi int) iter.Seq[Path] {
+	r := ix.NamesAt(lo, hi)
+	if r.Valid() {
+		r.limit = hi - lo - 1
+	}
+	return r.All()
 }
 
 func (ix *Index) str(off int) []byte {
@@ -277,21 +324,20 @@ func (ix *Index) str(off int) []byte {
 	return str[:i]
 }
 
-// Name returns the name corresponding to the given fileid.
-func (ix *Index) Name(fileid int) string {
-	return string(ix.NameBytes(fileid))
-}
-
-// listAt returns the index list entry at the given offset.
-func (ix *Index) listAt(off int) (trigram uint32, count, offset int) {
-	d := ix.slice(ix.postIndex+off, ix.postEntrySize)
+// listAt returns the i'th posting index list entry.
+// It is only valid for version 1 indexes.
+func (ix *Index) postIndexEntry(i int) (trigram uint32, count, offset int) {
+	if ix.version != 1 {
+		panic("postIndexEntry misuse")
+	}
+	d := ix.slice(ix.postIndex+i*postIndexEntrySizeV1, postIndexEntrySizeV1)
 	trigram = uint32(d[0])<<16 | uint32(d[1])<<8 | uint32(d[2])
-	if ix.is64 {
-		count = int(binary.BigEndian.Uint64(d[3:]))
-		offset = int(binary.BigEndian.Uint64(d[3+8:]))
-	} else {
+	if ix.version == 1 {
 		count = int(binary.BigEndian.Uint32(d[3:]))
 		offset = int(binary.BigEndian.Uint32(d[3+4:]))
+	} else {
+		count = int(binary.BigEndian.Uint64(d[3:]))
+		offset = int(binary.BigEndian.Uint64(d[3+8:]))
 	}
 	if count < 0 || offset < 0 {
 		ix.corrupt()
@@ -299,29 +345,61 @@ func (ix *Index) listAt(off int) (trigram uint32, count, offset int) {
 	return
 }
 
-func (ix *Index) dumpPosting() {
-	for i := 0; i < ix.numPost; i++ {
-		t, count, offset := ix.listAt(i * ix.postEntrySize)
-		log.Printf("%#x: %d at %d", t, count, offset)
-	}
-}
-
 func (ix *Index) findList(trigram uint32) (count, offset int) {
+	if ix.version == 2 {
+		return ix.findListV2(trigram)
+	}
 	// binary search
-	d := ix.slice(ix.postIndex, ix.postEntrySize*ix.numPost)
+	d := ix.slice(ix.postIndex, ix.numPost*postIndexEntrySizeV1)
 	i := sort.Search(ix.numPost, func(i int) bool {
-		i *= ix.postEntrySize
+		i *= postIndexEntrySizeV1
 		t := uint32(d[i])<<16 | uint32(d[i+1])<<8 | uint32(d[i+2])
 		return t >= trigram
 	})
 	if i >= ix.numPost {
 		return 0, 0
 	}
-	t, count, offset := ix.listAt(i * ix.postEntrySize)
+	t, count, offset := ix.postIndexEntry(i)
 	if t != trigram {
 		return 0, 0
 	}
 	return count, offset
+}
+
+func (ix *Index) findListV2(trigram uint32) (count, offset int) {
+	// binary search to find first posting block too late for trigram
+	b := ix.slice(ix.postIndex, ix.numPostBlock*postBlockSize)
+	i := sort.Search(ix.numPostBlock, func(i int) bool {
+		i *= postBlockSize
+		t := uint32(b[i])<<16 | uint32(b[i+1])<<8 | uint32(b[i+2])
+		return t > trigram
+	})
+	if i == 0 {
+		return 0, 0
+	}
+
+	// walk block to find trigram
+	b = b[(i-1)*postBlockSize : i*postBlockSize]
+	for len(b) >= 3 {
+		t := uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2])
+		if t == 0 {
+			break
+		}
+		count, n1 := binary.Uvarint(b[3:])
+		if n1 < 0 {
+			ix.corrupt()
+		}
+		o, n2 := binary.Uvarint(b[3+n1:])
+		if n2 < 0 {
+			ix.corrupt()
+		}
+		offset += int(o)
+		if t == trigram {
+			return int(count), offset
+		}
+		b = b[3+n1+n2:]
+	}
+	return 0, 0
 }
 
 type postReader struct {
@@ -351,6 +429,9 @@ func (r *postReader) max() int {
 }
 
 func (r *postReader) next() bool {
+	if r.ix == nil {
+		return false
+	}
 	for r.count > 0 {
 		r.count--
 		delta := r.delta.next()
@@ -554,7 +635,12 @@ func mergeOr(l1, l2 []int) []int {
 	return l
 }
 
+var panicOnCorrupt = false
+
 func (ix *Index) corrupt() {
+	if panicOnCorrupt {
+		panic("corrupt index")
+	}
 	log.Fatal("corrupt index: remove " + ix.name)
 }
 
@@ -572,6 +658,9 @@ func mmap(file string) mmapData {
 	}
 	return mmapFile(f)
 }
+
+// TODO look in parent directories for index
+// TODO cindex -init
 
 // File returns the name of the index file to use.
 // It is either $CSEARCHINDEX or $HOME/.csearchindex.

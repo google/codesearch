@@ -5,8 +5,8 @@
 package index
 
 import (
-	"io/ioutil"
 	"os"
+	"slices"
 	"testing"
 )
 
@@ -17,44 +17,37 @@ var postFiles = map[string]string{
 	"file3": "Google Web Search",
 }
 
-func tri(x, y, z byte) uint32 {
-	return uint32(x)<<16 | uint32(y)<<8 | uint32(z)
+func tri(x string) uint32 {
+	return uint32(x[0])<<16 | uint32(x[1])<<8 | uint32(x[2])
 }
 
 func TestTrivialPosting(t *testing.T) {
-	f, _ := ioutil.TempFile("", "index-test")
+	f, _ := os.CreateTemp("", "index-test")
 	defer os.Remove(f.Name())
 	out := f.Name()
 	buildIndex(out, nil, postFiles)
+	data, _ := os.ReadFile(out)
+	os.WriteFile("/tmp/out", data, 0666)
 	ix := Open(out)
-	if l := ix.PostingList(tri('S', 'e', 'a')); !equalList(l, []int{1, 3}) {
+	if l := ix.PostingList(tri(" Co")); !slices.Equal(l, []int{1, 2}) {
+		t.Errorf("PostingList( Co) = %v, want [1 3]", l)
+	}
+	if l := ix.PostingList(tri("Sea")); !slices.Equal(l, []int{1, 3}) {
 		t.Errorf("PostingList(Sea) = %v, want [1 3]", l)
 	}
-	if l := ix.PostingList(tri('G', 'o', 'o')); !equalList(l, []int{1, 2, 3}) {
+	if l := ix.PostingList(tri("Goo")); !slices.Equal(l, []int{1, 2, 3}) {
 		t.Errorf("PostingList(Goo) = %v, want [1 2 3]", l)
 	}
-	if l := ix.PostingAnd(ix.PostingList(tri('S', 'e', 'a')), tri('G', 'o', 'o')); !equalList(l, []int{1, 3}) {
+	if l := ix.PostingAnd(ix.PostingList(tri("Sea")), tri("Goo")); !slices.Equal(l, []int{1, 3}) {
 		t.Errorf("PostingList(Sea&Goo) = %v, want [1 3]", l)
 	}
-	if l := ix.PostingAnd(ix.PostingList(tri('G', 'o', 'o')), tri('S', 'e', 'a')); !equalList(l, []int{1, 3}) {
+	if l := ix.PostingAnd(ix.PostingList(tri("Goo")), tri("Sea")); !slices.Equal(l, []int{1, 3}) {
 		t.Errorf("PostingList(Goo&Sea) = %v, want [1 3]", l)
 	}
-	if l := ix.PostingOr(ix.PostingList(tri('S', 'e', 'a')), tri('G', 'o', 'o')); !equalList(l, []int{1, 2, 3}) {
+	if l := ix.PostingOr(ix.PostingList(tri("Sea")), tri("Goo")); !slices.Equal(l, []int{1, 2, 3}) {
 		t.Errorf("PostingList(Sea|Goo) = %v, want [1 2 3]", l)
 	}
-	if l := ix.PostingOr(ix.PostingList(tri('G', 'o', 'o')), tri('S', 'e', 'a')); !equalList(l, []int{1, 2, 3}) {
+	if l := ix.PostingOr(ix.PostingList(tri("Goo")), tri("Sea")); !slices.Equal(l, []int{1, 2, 3}) {
 		t.Errorf("PostingList(Goo|Sea) = %v, want [1 2 3]", l)
 	}
-}
-
-func equalList(x, y []int) bool {
-	if len(x) != len(y) {
-		return false
-	}
-	for i, xi := range x {
-		if xi != y[i] {
-			return false
-		}
-	}
-	return true
 }

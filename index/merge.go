@@ -8,31 +8,32 @@ package index
 //
 // To merge two indexes A and B (newer) into a combined index C:
 //
-// Load the path list from B and determine for each path the docid ranges
+// Load the root list from B and determine for each root the fileid ranges
 // that it will replace in A.
 //
 // Read A's and B's name lists together, merging them into C's name list.
 // Discard the identified ranges from A during the merge.  Also during the merge,
-// record the mapping from A's docids to C's docids, and also the mapping from
-// B's docids to C's docids.  Both mappings can be summarized in a table like
+// record the mapping from A's fileids to C's fileids, and also the mapping from
+// B's fileids to C's fileids.  Both mappings can be summarized in a table like
 //
 //	10-14 map to 20-24
 //	15-24 is deleted
 //	25-34 maps to 40-49
 //
-// The number of ranges will be at most the combined number of paths.
+// The number of ranges will be at most the combined number of roots.
 // Also during the merge, write the name index to a temporary file as usual.
 //
 // Now merge the posting lists (this is why they begin with the trigram).
-// During the merge, translate the docid numbers to the new C docid space.
+// During the merge, translate the fileid numbers to the new C fileid space.
 // Also during the merge, write the posting list index to a temporary file as usual.
 //
 // Copy the name index and posting list index into C's index and write the trailer.
 // Rename C's index onto the new index.
 
 import (
+	"encoding/binary"
+	"fmt"
 	"os"
-	"strings"
 )
 
 // An idrange records that the half-open interval [lo, hi) maps to [new, new+hi-lo).
@@ -40,13 +41,9 @@ type idrange struct {
 	lo, hi, new int
 }
 
-type postIndex struct {
-	tri    uint32
-	count  int
-	offset int
-}
-
-var writeOldIndex = false
+// writeVersion is the index version that IndexWriter and Merge should write.
+// We only write older versions during testing.
+var writeVersion = 2
 
 // Merge creates a new index in the file dst that corresponds to merging
 // the two indices src1 and src2.  If both src1 and src2 claim responsibility
@@ -54,21 +51,33 @@ var writeOldIndex = false
 func Merge(dst, src1, src2 string) {
 	ix1 := Open(src1)
 	ix2 := Open(src2)
-	paths1 := ix1.Paths()
-	paths2 := ix2.Paths()
 
-	// Build docid maps.
+	// Build fileid maps.
 	var i1, i2, new int
 	var map1, map2 []idrange
-	for _, path := range paths2 {
+	names1 := ix1.NamesAt(0, ix1.numName)
+	names2 := ix2.NamesAt(0, ix2.numName)
+	name1 := names1.Path()
+	name2 := names2.Path()
+	for root := range ix2.Roots().All() {
 		// Determine range shadowed by this path.
 		old := i1
-		for i1 < ix1.numName && ix1.Name(i1) < path {
+		for i1 < ix1.numName && name1.Compare(root) < 0 {
+			names1.Next()
+			name1 = names1.Path()
 			i1++
 		}
 		lo := i1
-		limit := path[:len(path)-1] + string(path[len(path)-1]+1)
-		for i1 < ix1.numName && ix1.Name(i1) < limit {
+
+		// limit is the path where the scan should stop.
+		// If root is foo, we want to scan foo/anything
+		// but not food or fop. Slash compares equal to \x00,
+		// and if foo is a zip file, foo\x01 is a file in it,
+		// so use foo\x02 as the limit.
+		limit := MakePath(root.String() + "\x02")
+		for i1 < ix1.numName && name1.Compare(limit) < 0 {
+			names1.Next()
+			name1 = names1.Path()
 			i1++
 		}
 		hi := i1
@@ -82,11 +91,14 @@ func Merge(dst, src1, src2 string) {
 		// Determine range defined by this path.
 		// Because we are iterating over the ix2 paths,
 		// there can't be gaps, so it must start at i2.
-		if i2 < ix2.numName && ix2.Name(i2) < path {
+		if i2 < ix2.numName && name2.Compare(root) < 0 {
+			fmt.Fprintf(os.Stderr, "IX %v %v %d %d %q=%q < %q %v\n", ix1.version, ix2.version, i2, ix2.numName, ix2.Name(i2), name2, root, ix2.version)
 			panic("merge: inconsistent index")
 		}
 		lo = i2
-		for i2 < ix2.numName && ix2.Name(i2) < limit {
+		for i2 < ix2.numName && name2.Compare(limit) < 0 {
+			names2.Next()
+			name2 = names2.Path()
 			i2++
 		}
 		hi = i2
@@ -105,79 +117,89 @@ func Merge(dst, src1, src2 string) {
 	}
 	numName := new
 
-	ix3 := bufCreate(dst)
-	ix3.writeString(magic)
+	ix := bufCreate(dst)
+	if writeVersion == 1 {
+		ix.WriteString(magicV1)
+	} else {
+		ix.WriteString(magicV2)
+	}
 
 	// Merged list of paths.
-	pathData := ix3.offset()
-	mi1 := 0
-	mi2 := 0
-	last := "\x00" // not a prefix of anything
-	for mi1 < len(paths1) || mi2 < len(paths2) {
-		var p string
-		if mi2 >= len(paths2) || mi1 < len(paths1) && paths1[mi1] <= paths2[mi2] {
-			p = paths1[mi1]
-			mi1++
+	pathData := ix.Offset()
+	last := MakePath("\xFF") // not a prefix of anything
+	writeVersion = 2
+	paths := NewPathWriter(ix, nil, writeVersion, 0)
+	p1 := ix1.Roots()
+	p2 := ix2.Roots()
+	for p1.Valid() || p2.Valid() {
+		var p Path
+		if !p2.Valid() || p1.Valid() && p1.Path().Compare(p2.Path()) <= 0 {
+			p = p1.Path()
+			p1.Next()
 		} else {
-			p = paths2[mi2]
-			mi2++
+			p = p2.Path()
+			p2.Next()
 		}
-		if strings.HasPrefix(p, last) {
+		if p.HasPathPrefix(last) {
 			continue
 		}
 		last = p
-		ix3.writeString(p)
-		ix3.writeString("\x00")
+		paths.Write(p)
 	}
-	ix3.writeString("\x00")
+	if writeVersion == 1 {
+		paths.Write(MakePath(""))
+	}
 
 	// Merged list of names.
-	nameData := ix3.offset()
+	ix.Align(16)
+	nameData := ix.Offset()
 	nameIndexFile := bufCreate("")
-	new = 0
-	mi1 = 0
-	mi2 = 0
-	for new < numName {
-		if mi1 < len(map1) && map1[mi1].new == new {
-			for i := map1[mi1].lo; i < map1[mi1].hi; i++ {
-				name := ix1.Name(i)
-				nameIndexFile.writeUint(ix3.offset() - nameData)
-				ix3.writeString(name)
-				ix3.writeString("\x00")
-				new++
-			}
-			mi1++
-		} else if mi2 < len(map2) && map2[mi2].new == new {
-			for i := map2[mi2].lo; i < map2[mi2].hi; i++ {
-				name := ix2.Name(i)
-				nameIndexFile.writeUint(ix3.offset() - nameData)
-				ix3.writeString(name)
-				ix3.writeString("\x00")
-				new++
-			}
-			mi2++
-		} else {
+	start := ix.Offset()
+	names := NewPathWriter(ix, nameIndexFile, writeVersion, nameGroupSize)
+	m1 := map1
+	m2 := map2
+	for names.Count() != numName {
+		switch {
+		case len(m1) > 0 && m1[0].new == names.Count():
+			names.Collect(ix1.Names(m1[0].lo, m1[0].hi))
+			m1 = m1[1:]
+		case len(m2) > 0 && m2[0].new == names.Count():
+			names.Collect(ix2.Names(m2[0].lo, m2[0].hi))
+			m2 = m2[1:]
+		default:
 			panic("merge: inconsistent index")
 		}
 	}
-	scale := 8
-	if writeOldIndex {
-		scale = 4
+	if writeVersion == 1 {
+		nameIndexFile.WriteUint(ix.Offset() - start)
+		ix.WriteByte(0)
 	}
-	if new*scale != nameIndexFile.offset() {
+
+	var want int
+	if writeVersion == 1 {
+		want = (names.Count() + 1) * 4
+	} else {
+		want = (names.Count() + nameGroupSize - 1) / nameGroupSize * 8
+	}
+	if nameIndexFile.Offset() != want {
 		panic("merge: inconsistent index")
 	}
-	nameIndexFile.writeUint(ix3.offset())
 
 	// Merged list of posting lists.
-	postData := ix3.offset()
+	ix.Align(16)
+	postData := ix.Offset()
 	var r1 postMapReader
 	var r2 postMapReader
 	var w postDataWriter
 	r1.init(ix1, map1)
 	r2.init(ix2, map2)
-	w.init(ix3, true)
+	w.init(ix, true)
+	old1, old2 := uint32(0), uint32(0)
 	for {
+		if !(r1.trigram > old1 || r2.trigram > old2) {
+			panic("no progress")
+		}
+		old1, old2 = r1.trigram, r2.trigram
 		if r1.trigram < r2.trigram {
 			w.trigram(r1.trigram)
 			for r1.nextId() {
@@ -215,64 +237,112 @@ func Merge(dst, src1, src2 string) {
 			w.endTrigram()
 		}
 	}
+	w.postIndexFile.Align(postBlockSize)
 
 	// Name index
-	nameIndex := ix3.offset()
-	copyFile(ix3, nameIndexFile)
+	ix.Align(16)
+	nameIndex := ix.Offset()
+	copyFile(ix, nameIndexFile)
 
 	// Posting list index
-	postIndex := ix3.offset()
-	copyFile(ix3, w.postIndexFile)
+	ix.Align(16)
+	postIndex := ix.Offset()
+	copyFile(ix, w.postIndexFile)
 
-	ix3.writeUint(pathData)
-	ix3.writeUint(nameData)
-	ix3.writeUint(postData)
-	ix3.writeUint(nameIndex)
-	ix3.writeUint(postIndex)
-	if writeOldIndex {
-		ix3.writeString(trailerMagic32)
-	} else {
-		ix3.writeString(trailerMagic64)
+	// Trailer
+	ix.Align(16)
+	ix.WriteUint(pathData)
+	if writeVersion == 2 {
+		ix.WriteUint(paths.Count())
 	}
-	ix3.flush()
+	ix.WriteUint(nameData)
+	if writeVersion == 2 {
+		ix.WriteUint(names.Count())
+	}
+	ix.WriteUint(postData)
+	if writeVersion == 2 {
+		ix.WriteUint(w.numTrigram)
+	}
+	ix.WriteUint(nameIndex)
+	ix.WriteUint(postIndex)
+
+	if writeVersion == 1 {
+		ix.WriteString(trailerMagicV1)
+	} else {
+		ix.WriteString(trailerMagicV2)
+	}
+	ix.Flush()
 
 	os.Remove(nameIndexFile.name)
 	os.Remove(w.postIndexFile.name)
 }
 
 type postMapReader struct {
-	ix      *Index
-	idmap   []idrange
-	triNum  int
-	trigram uint32
-	count   int
-	offset  int
-	oldid   int
-	fileid  int
-	i       int
-	delta   deltaReader
+	ix        *Index
+	idmap     []idrange
+	trigram   uint32
+	count     int
+	offset    int
+	oldid     int
+	fileid    int
+	i         int
+	delta     deltaReader
+	block     []byte
+	nextBlock int
+	triNum    int
 }
 
 func (r *postMapReader) init(ix *Index, idmap []idrange) {
 	r.ix = ix
 	r.idmap = idmap
 	r.trigram = ^uint32(0)
-	r.load()
+	r.nextBlock = 0
+	r.triNum = -1
+	r.load(true)
 }
 
 func (r *postMapReader) nextTrigram() {
-	r.triNum++
-	r.load()
+	r.load(false)
 }
 
-func (r *postMapReader) load() {
+func (r *postMapReader) load(force bool) {
+	if !force && r.trigram == ^uint32(0) {
+		return
+	}
+	r.triNum++
 	if r.triNum >= r.ix.numPost {
 		r.trigram = ^uint32(0)
 		r.count = 0
 		r.fileid = -1
 		return
 	}
-	r.trigram, r.count, r.offset = r.ix.listAt(r.triNum * r.ix.postEntrySize)
+
+	if r.ix.version == 1 {
+		r.trigram, r.count, r.offset = r.ix.postIndexEntry(r.triNum)
+	} else {
+		b := r.block
+		if b == nil || len(b) < 3 || b[0] == 0 && b[1] == 0 && b[2] == 0 {
+			r.block = r.ix.slice(r.ix.postIndex+r.nextBlock, postBlockSize)
+			r.nextBlock += postBlockSize
+			b = r.block
+			r.offset = 0
+		}
+		r.trigram = uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2])
+		b = b[3:]
+		n1, l := binary.Uvarint(b)
+		if l <= 0 {
+			r.ix.corrupt()
+		}
+		b = b[l:]
+		n2, l := binary.Uvarint(b)
+		if l <= 0 {
+			r.ix.corrupt()
+		}
+		b = b[l:]
+		r.count = int(n1)
+		r.offset += int(n2)
+		r.block = b
+	}
 	if r.count == 0 {
 		r.fileid = -1
 		return
@@ -309,39 +379,43 @@ func (r *postMapReader) nextId() bool {
 }
 
 type postDataWriter struct {
-	out           *bufWriter
-	postIndexFile *bufWriter
+	out           *Buffer
+	postIndexFile *Buffer
 	base          int
+	lastOffset    int
 	count         int
 	offset        int
-	last          int
+	lastID        int
 	t             uint32
 	delta         deltaWriter
+	numTrigram    int
 }
 
-func (w *postDataWriter) init(out *bufWriter, doIndex bool) {
+func (w *postDataWriter) init(out *Buffer, doIndex bool) {
 	w.out = out
-	w.base = out.offset()
+	w.base = out.Offset()
 	w.postIndexFile = nil
 	w.delta.init(out)
+	w.lastOffset = w.base
 	if doIndex {
 		w.postIndexFile = bufCreate("")
 	}
 }
 
 func (w *postDataWriter) trigram(t uint32) {
-	w.offset = w.out.offset()
+	w.offset = w.out.Offset()
 	w.count = 0
 	w.t = t
-	w.last = -1
+	w.lastID = -1
+	w.numTrigram++
 }
 
 func (w *postDataWriter) fileid(id int) {
 	if w.count == 0 {
-		w.out.writeTrigram(w.t)
+		w.out.WriteTrigram(w.t)
 	}
-	w.delta.write(id - w.last)
-	w.last = id
+	w.delta.Write(id - w.lastID)
+	w.lastID = id
 	w.count++
 }
 
@@ -349,11 +423,29 @@ func (w *postDataWriter) endTrigram() {
 	if w.count == 0 {
 		return
 	}
-	w.delta.write(0)
-	w.delta.flush()
-	if w.postIndexFile != nil {
-		w.postIndexFile.writeTrigram(w.t)
-		w.postIndexFile.writeUint(w.count)
-		w.postIndexFile.writeUint(w.offset - w.base)
+	w.delta.Write(0)
+	w.delta.Flush()
+	if w.postIndexFile == nil {
+		return
+	}
+	if writeVersion == 2 {
+		var buf []byte
+		buf = append(buf, byte(w.t>>16), byte(w.t>>8), byte(w.t))
+		buf = binary.AppendUvarint(buf, uint64(w.count))
+		cbuf := buf
+		buf = binary.AppendUvarint(buf, uint64(w.offset-w.lastOffset))
+		if w.postIndexFile.Offset()/postBlockSize != (w.postIndexFile.Offset()+len(buf)-1)/postBlockSize {
+			for w.postIndexFile.Offset()%postBlockSize != 0 {
+				w.postIndexFile.WriteByte(0)
+			}
+			w.lastOffset = w.base
+			buf = binary.AppendUvarint(cbuf, uint64(w.offset-w.lastOffset))
+		}
+		w.postIndexFile.Write(buf[:])
+		w.lastOffset = w.offset
+	} else {
+		w.postIndexFile.WriteTrigram(w.t)
+		w.postIndexFile.WriteUint(w.count)
+		w.postIndexFile.WriteUint(w.offset - w.base)
 	}
 }
