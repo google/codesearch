@@ -6,6 +6,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
@@ -141,6 +142,10 @@ func Main() {
 
 	for _, fileid := range post {
 		name := ix.Name(fileid).String()
+		if g.L && (pat == "(?m)" || pat == "(?i)(?m)") {
+			g.Reader(bytes.NewReader(nil), name)
+			continue
+		}
 		file, err := os.Open(string(name))
 		if err != nil {
 			if i := strings.Index(name, ".zip#"); i >= 0 {
