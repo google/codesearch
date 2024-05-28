@@ -216,10 +216,11 @@ func Merge(dst, src1, src2 string) {
 			r2.nextTrigram()
 			w.endTrigram()
 		} else {
+			w.trigram(r1.trigram)
 			if r1.trigram == ^uint32(0) {
+				w.endTrigram()
 				break
 			}
-			w.trigram(r1.trigram)
 			r1.nextId()
 			r2.nextId()
 			for r1.fileid != -1 || r2.fileid != -1 {
@@ -379,85 +380,4 @@ func (r *postMapReader) nextId() bool {
 
 	r.fileid = -1
 	return false
-}
-
-type postDataWriter struct {
-	out           *Buffer
-	postIndexFile *Buffer
-	base          int
-	lastOffset    int
-	count         int
-	offset        int
-	lastID        int
-	t             uint32
-	delta         deltaWriter
-	numTrigram    int
-	tmp           [32]byte
-	block         []byte
-}
-
-func (w *postDataWriter) flush() {
-	if w.postIndexFile != nil && len(w.block) > 0 {
-		w.postIndexFile.Write(w.block[:cap(w.block)])
-		w.block = w.block[:0]
-	}
-}
-
-func (w *postDataWriter) init(postData, postIndex *Buffer) {
-	w.out = postData
-	w.base = w.out.Offset()
-	w.postIndexFile = nil
-	w.delta.init(w.out)
-	w.lastOffset = w.base
-	w.postIndexFile = postIndex
-	w.block = make([]byte, 0, postBlockSize)
-}
-
-func (w *postDataWriter) trigram(t uint32) {
-	if t == 0 {
-		panic("invalid trigram")
-	}
-	w.offset = w.out.Offset()
-	w.count = 0
-	w.t = t
-	w.lastID = -1
-	w.numTrigram++
-	w.out.WriteTrigram(w.t)
-}
-
-func (w *postDataWriter) fileid(id int) {
-	w.delta.Write(id - w.lastID)
-	w.lastID = id
-	w.count++
-}
-
-func (w *postDataWriter) endTrigram() {
-	w.delta.Write(0)
-	w.delta.Flush()
-	if w.postIndexFile == nil {
-		return
-	}
-	if writeVersion == 1 {
-		w.postIndexFile.WriteTrigram(w.t)
-		w.postIndexFile.WriteUint(w.count)
-		w.postIndexFile.WriteUint(w.offset - w.base)
-		return
-	}
-
-	buf := w.tmp[:]
-	buf[0] = byte(w.t >> 16)
-	buf[1] = byte(w.t >> 8)
-	buf[2] = byte(w.t)
-
-	n := 3
-	n += binary.PutUvarint(buf[n:], uint64(w.count))
-	n1 := binary.PutUvarint(buf[n:], uint64(w.offset-w.lastOffset))
-	if len(w.block)+n+n1 > cap(w.block) {
-		w.postIndexFile.Write(w.block[:cap(w.block)])
-		clear(w.block)
-		w.block = w.block[:0]
-		n1 = binary.PutUvarint(buf[n:], uint64(w.offset-w.base))
-	}
-	w.block = append(w.block, buf[:n+n1]...)
-	w.lastOffset = w.offset
 }
