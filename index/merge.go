@@ -193,7 +193,8 @@ func Merge(dst, src1, src2 string) {
 	var w postDataWriter
 	r1.init(ix1, map1)
 	r2.init(ix2, map2)
-	w.init(ix, true)
+	postIndexFile := bufCreate("")
+	w.init(ix, postIndexFile)
 	old1, old2 := uint32(0), uint32(0)
 	for {
 		if !(r1.trigram > old1 || r2.trigram > old2) {
@@ -237,7 +238,9 @@ func Merge(dst, src1, src2 string) {
 			w.endTrigram()
 		}
 	}
-	w.postIndexFile.Align(postBlockSize)
+	if len(w.block) > 0 {
+		w.flush()
+	}
 
 	// Name index
 	ix.Align(16)
@@ -247,7 +250,7 @@ func Merge(dst, src1, src2 string) {
 	// Posting list index
 	ix.Align(16)
 	postIndex := ix.Offset()
-	copyFile(ix, w.postIndexFile)
+	copyFile(ix, postIndexFile)
 
 	// Trailer
 	ix.Align(16)
@@ -389,63 +392,72 @@ type postDataWriter struct {
 	t             uint32
 	delta         deltaWriter
 	numTrigram    int
+	tmp           [32]byte
+	block         []byte
 }
 
-func (w *postDataWriter) init(out *Buffer, doIndex bool) {
-	w.out = out
-	w.base = out.Offset()
-	w.postIndexFile = nil
-	w.delta.init(out)
-	w.lastOffset = w.base
-	if doIndex {
-		w.postIndexFile = bufCreate("")
+func (w *postDataWriter) flush() {
+	if w.postIndexFile != nil && len(w.block) > 0 {
+		w.postIndexFile.Write(w.block[:cap(w.block)])
+		w.block = w.block[:0]
 	}
 }
 
+func (w *postDataWriter) init(postData, postIndex *Buffer) {
+	w.out = postData
+	w.base = w.out.Offset()
+	w.postIndexFile = nil
+	w.delta.init(w.out)
+	w.lastOffset = w.base
+	w.postIndexFile = postIndex
+	w.block = make([]byte, 0, postBlockSize)
+}
+
 func (w *postDataWriter) trigram(t uint32) {
+	if t == 0 {
+		panic("invalid trigram")
+	}
 	w.offset = w.out.Offset()
 	w.count = 0
 	w.t = t
 	w.lastID = -1
 	w.numTrigram++
+	w.out.WriteTrigram(w.t)
 }
 
 func (w *postDataWriter) fileid(id int) {
-	if w.count == 0 {
-		w.out.WriteTrigram(w.t)
-	}
 	w.delta.Write(id - w.lastID)
 	w.lastID = id
 	w.count++
 }
 
 func (w *postDataWriter) endTrigram() {
-	if w.count == 0 {
-		return
-	}
 	w.delta.Write(0)
 	w.delta.Flush()
 	if w.postIndexFile == nil {
 		return
 	}
-	if writeVersion == 2 {
-		var buf []byte
-		buf = append(buf, byte(w.t>>16), byte(w.t>>8), byte(w.t))
-		buf = binary.AppendUvarint(buf, uint64(w.count))
-		cbuf := buf
-		buf = binary.AppendUvarint(buf, uint64(w.offset-w.lastOffset))
-		if w.postIndexFile.Offset()/postBlockSize != (w.postIndexFile.Offset()+len(buf)-1)/postBlockSize {
-			for w.postIndexFile.Offset()%postBlockSize != 0 {
-				w.postIndexFile.WriteByte(0)
-			}
-			w.lastOffset = w.base
-			buf = binary.AppendUvarint(cbuf, uint64(w.offset-w.lastOffset))
-		}
-		w.postIndexFile.Write(buf[:])
-		w.lastOffset = w.offset
-	} else {
+	if writeVersion == 1 {
 		w.postIndexFile.WriteTrigram(w.t)
 		w.postIndexFile.WriteUint(w.count)
 		w.postIndexFile.WriteUint(w.offset - w.base)
+		return
 	}
+
+	buf := w.tmp[:]
+	buf[0] = byte(w.t >> 16)
+	buf[1] = byte(w.t >> 8)
+	buf[2] = byte(w.t)
+
+	n := 3
+	n += binary.PutUvarint(buf[n:], uint64(w.count))
+	n1 := binary.PutUvarint(buf[n:], uint64(w.offset-w.lastOffset))
+	if len(w.block)+n+n1 > cap(w.block) {
+		w.postIndexFile.Write(w.block[:cap(w.block)])
+		clear(w.block)
+		w.block = w.block[:0]
+		n1 = binary.PutUvarint(buf[n:], uint64(w.offset-w.base))
+	}
+	w.block = append(w.block, buf[:n+n1]...)
+	w.lastOffset = w.offset
 }

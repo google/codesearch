@@ -244,6 +244,12 @@ func (ix *IndexWriter) add(name string, f io.Reader) error {
 		if n++; n >= 3 {
 			ix.trigram.Add(tv)
 		}
+		if c == 0 {
+			if ix.LogSkip {
+				log.Printf("%s: contains NUL, ignoring\n", name)
+			}
+			return nil
+		}
 		if !validUTF8((tv>>8)&0xFF, tv&0xFF) {
 			if ix.LogSkip {
 				log.Printf("%s: invalid UTF-8, ignoring\n", name)
@@ -393,7 +399,7 @@ func (ix *IndexWriter) flushPost() {
 
 	start := ix.postFile.Offset()
 	var w postDataWriter
-	w.init(ix.postFile, false)
+	w.init(ix.postFile, nil)
 	trigram := invalidTrigram
 	for _, p := range ix.post {
 		if t := p.trigram(); t != trigram {
@@ -429,63 +435,23 @@ func (ix *IndexWriter) mergePost(out *Buffer) {
 	sortPost(ix.post)
 	h.addMem(ix.post)
 
+	var w postDataWriter
+	w.init(out, ix.postIndex)
+
 	e := h.next()
-	offset0 := out.Offset()
-	var delta deltaWriter
-	delta.init(out)
-	var block []byte
-	out.WriteString("")
-	lastBlockOffset := 0
 	for {
-		offset := out.Offset() - offset0
-		trigram := e.trigram()
-
-		ix.buf[0] = byte(trigram >> 16)
-		ix.buf[1] = byte(trigram >> 8)
-		ix.buf[2] = byte(trigram)
-
-		// posting list
-		fileid := -1
-		nfile := 0
-		out.Write(ix.buf[:3])
-		for ; e.trigram() == trigram && trigram != invalidTrigram; e = h.next() {
-			delta.Write(e.fileid() - fileid)
-			fileid = e.fileid()
-			nfile++
+		t := e.trigram()
+		w.trigram(t)
+		for ; e.trigram() == t && t != invalidTrigram; e = h.next() {
+			w.fileid(e.fileid())
 		}
-		delta.Write(0)
-		delta.Flush()
-
-		// index entry
-		if writeVersion == 1 {
-			ix.postIndex.Write(ix.buf[:3])
-			ix.postIndex.WriteUint(nfile)
-			ix.postIndex.WriteUint(offset)
-		} else {
-			n := 3
-			n += binary.PutUvarint(ix.buf[n:], uint64(nfile))
-			n1 := binary.PutUvarint(ix.buf[n:], uint64(offset-lastBlockOffset))
-			if len(block)+n+n1 > cap(block) {
-				if block == nil {
-					block = make([]byte, 0, postBlockSize)
-				} else {
-					ix.postIndex.Write(block[:cap(block)])
-					clear(block)
-					block = block[:0]
-				}
-				n1 = binary.PutUvarint(ix.buf[n:], uint64(offset))
-			}
-			block = append(block, ix.buf[:n+n1]...)
-			lastBlockOffset = offset
-		}
-		ix.numTrigram++
-		if trigram == 1<<24-1 {
+		w.endTrigram()
+		if t == invalidTrigram {
 			break
 		}
 	}
-	if len(block) > 0 {
-		ix.postIndex.Write(block[:cap(block)])
-	}
+	w.flush()
+	ix.numTrigram = w.numTrigram
 }
 
 // A postChunk represents a chunk of post entries flushed to disk or

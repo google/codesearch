@@ -62,6 +62,7 @@ var (
 	resetFlag   = flag.Bool("reset", false, "discard existing index")
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to this file")
+	checkFlag   = flag.Bool("check", false, "check index is well-formatted")
 	zipFlag     = flag.Bool("zip", false, "index content in zip files")
 	statsFlag   = flag.Bool("stats", false, "print index size statistics")
 )
@@ -73,6 +74,11 @@ func main() {
 
 	if *listFlag {
 		ix := index.Open(index.File())
+		if *checkFlag {
+			if err := ix.Check(); err != nil {
+				log.Fatal(err)
+			}
+		}
 		for p := range ix.Roots().All() {
 			fmt.Printf("%s\n", p)
 		}
@@ -119,6 +125,12 @@ func main() {
 	file := master
 	if !*resetFlag {
 		file += "~"
+		if *checkFlag {
+			ix := index.Open(master)
+			if err := ix.Check(); err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
 
 	ix := index.Create(file)
@@ -156,9 +168,23 @@ func main() {
 	if !*resetFlag {
 		log.Printf("merge %s %s", master, file)
 		index.Merge(file+"~", master, file)
+		if *checkFlag {
+			ix := index.Open(file + "~")
+			if err := ix.Check(); err != nil {
+				log.Fatal(err)
+			}
+		}
 		os.Remove(file)
 		os.Rename(file+"~", master)
+	} else {
+		if *checkFlag {
+			ix := index.Open(file)
+			if err := ix.Check(); err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
+
 	log.Printf("done")
 
 	if *statsFlag {

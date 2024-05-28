@@ -58,18 +58,18 @@ package index
 //
 // The file count and offset are varint-encoded, breaking random
 // access to the posting list index. To restore that, any index
-// entry that would otherwise cross a 128-byte boundary is preceded
+// entry that would otherwise cross a 256-byte boundary is preceded
 // by zeroed padding bytes up to the boundary. The overall index
-// is also zero-padded to a multiple of 128 bytes.
-// The offsets in each 128-byte chunk are delta-encoded starting
+// is also zero-padded to a multiple of 256 bytes.
+// The offsets in each 256-byte chunk are delta-encoded starting
 // from a base offset of 0.
 //
 // Index entries are only written for the non-empty posting lists,
 // so finding the posting list for a specific trigram requires a
 // binary search over the posting list index. To find an entry
-// in the index for a given trigram, binary search on the 128-byte
-// sections to find the 128-byte entry where it would be,
-// and then linear search in the 128-byte section.
+// in the index for a given trigram, binary search on the 256-byte
+// sections to find the 256-byte entry where it would be,
+// and then linear search in the 256-byte section.
 //
 // In practice, the majority of the possible trigrams are never
 // seen, so omitting the missing ones represents a significant
@@ -635,7 +635,7 @@ func mergeOr(l1, l2 []int) []int {
 	return l
 }
 
-var panicOnCorrupt = false
+var panicOnCorrupt = true
 
 func (ix *Index) corrupt() {
 	if panicOnCorrupt {
