@@ -51,6 +51,7 @@ func usage() {
 var (
 	fFlag       = flag.String("f", "", "search only files with names matching this regexp")
 	iFlag       = flag.Bool("i", false, "case-insensitive search")
+	htmlFlag    = flag.Bool("html", false, "print HTML output")
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
 	bruteFlag   = flag.Bool("brute", false, "brute force - search all files in index")
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to this file")
@@ -68,6 +69,9 @@ func Main() {
 
 	flag.Usage = usage
 	flag.Parse()
+	if *htmlFlag {
+		g.HTML = true
+	}
 	args := flag.Args()
 
 	if len(args) != 1 {
@@ -148,7 +152,7 @@ func Main() {
 		}
 		file, err := os.Open(string(name))
 		if err != nil {
-			if i := strings.Index(name, ".zip#"); i >= 0 {
+			if i := strings.Index(name, ".zip\x01"); i >= 0 {
 				zfile, zname := name[:i+4], name[i+5:]
 				if zfile != zipFile {
 					if zipReader != nil {
