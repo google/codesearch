@@ -217,7 +217,7 @@ func Merge(dst, src1, src2 string) {
 			w.endTrigram()
 		} else {
 			w.trigram(r1.trigram)
-			if r1.trigram == ^uint32(0) {
+			if r1.trigram == invalidTrigram {
 				w.endTrigram()
 				break
 			}
@@ -299,7 +299,7 @@ type postMapReader struct {
 func (r *postMapReader) init(ix *Index, idmap []idrange) {
 	r.ix = ix
 	r.idmap = idmap
-	r.trigram = ^uint32(0)
+	r.trigram = invalidTrigram
 	r.nextBlock = 0
 	r.triNum = -1
 	r.load(true)
@@ -310,12 +310,12 @@ func (r *postMapReader) nextTrigram() {
 }
 
 func (r *postMapReader) load(force bool) {
-	if !force && r.trigram == ^uint32(0) {
+	if !force && r.trigram == invalidTrigram {
 		return
 	}
 	r.triNum++
 	if r.triNum >= r.ix.numPost {
-		r.trigram = ^uint32(0)
+		r.trigram = invalidTrigram
 		r.count = 0
 		r.fileid = -1
 		return

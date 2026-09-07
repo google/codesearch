@@ -860,17 +860,26 @@ func (w *postDataWriter) trigram(t uint32) {
 	w.count = 0
 	w.t = t
 	w.lastID = -1
-	w.numTrigram++
-	w.out.WriteTrigram(w.t)
 }
 
 func (w *postDataWriter) fileid(id int) {
+	if w.count == 0 {
+		w.out.WriteTrigram(w.t)
+		w.numTrigram++
+	}
 	w.delta.Write(id - w.lastID)
 	w.lastID = id
 	w.count++
 }
 
 func (w *postDataWriter) endTrigram() {
+	if w.count == 0 {
+		if w.t != invalidTrigram {
+			return
+		}
+		w.out.WriteTrigram(w.t)
+		w.numTrigram++
+	}
 	w.delta.Write(0)
 	w.delta.Flush()
 	if w.postIndexFile == nil {

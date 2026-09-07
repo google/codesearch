@@ -76,6 +76,49 @@ func TestMerge(t *testing.T) {
 	checkPosting(t, ix3, "pot", 4, 5, 7)
 }
 
+func TestMergeRepeated(t *testing.T) {
+	old := writeVersion
+	defer func() {
+		writeVersion = old
+	}()
+	writeVersion = 2
+
+	tempIndex := func() string {
+		f, err := os.CreateTemp("", "index-test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := f.Name()
+		f.Close()
+		t.Cleanup(func() {
+			os.Remove(name)
+		})
+		return name
+	}
+
+	current := tempIndex()
+	buildIndex(current, mergePaths1, mergeFiles1)
+	wantPost := Open(current).numPost
+
+	for i := 1; i <= 4; i++ {
+		fresh := tempIndex()
+		next := tempIndex()
+		buildIndex(fresh, mergePaths1, mergeFiles1)
+		Merge(next, current, fresh)
+
+		ix := Open(next)
+		if err := ix.Check(); err != nil {
+			t.Fatalf("merge %d: Check: %v", i, err)
+		}
+		if ix.numPost != wantPost {
+			t.Fatalf("merge %d: numPost = %d, want %d", i, ix.numPost, wantPost)
+		}
+		checkFiles(t, ix, "/a/x", "/a/y", "/b/xx", "/b/xy", "/c/ab", "/c/de")
+
+		current = next
+	}
+}
+
 func checkFiles(t *testing.T, ix *Index, l ...string) {
 	t.Helper()
 	for i, s := range l {
