@@ -6,8 +6,13 @@ For background and an overview of the commands,
 see http://swtch.com/~rsc/regexp/regexp4.html.
 
 To install:
+	- With go version below 1.17:
 
 	go get github.com/google/codesearch/cmd/...
+
+	- With go version 1.17+:
+
+	go install github.com/google/codesearch/cmd/...@latest
 
 Use "go get -u" to update an existing installation.
 
